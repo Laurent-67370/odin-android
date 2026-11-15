@@ -266,6 +266,36 @@ index 1a4e66f..2b25c2d 100644
  	if (parsed != odin::Parsed::RUN) {
  		odin::print_help(argv[0]);
  		return parsed == odin::Parsed::HELP_ASKED ? 0 : 1;
+diff --git a/src/odin/host/app/options.cpp b/src/odin/host/app/options.cpp
+index 23e723f..5dcfc72 100644
+--- a/src/odin/host/app/options.cpp
++++ b/src/odin/host/app/options.cpp
+@@ -26,6 +26,7 @@
+  */
+ 
+ #include "odin/host/app/options.hpp"
++#include "odin/host/video/picture.hpp"
+ 
+ #include <algorithm>
+ #include <cstdio>
+@@ -153,6 +154,8 @@ read_display(const Settings &settings, Options &options)
+ 			options.display.api = static_cast<DisplayApi>(*index_named(APIS, value));
+ 		} else if (key == "gpu") {
+ 			options.display.gpu = value;
++		} else if (key == "shape" && index_named(PICTURE_SHAPES, value)) {
++			options.display.shape = static_cast<unsigned>(*index_named(PICTURE_SHAPES, value));
+ 		} else if (key == "upscale_mode" && index_named(UPSCALE_MODES, value)) {
+ 			options.display.upscale_mode = static_cast<DisplayUpscaleMode>(*index_named(UPSCALE_MODES, value));
+ 		} else if (key == "bezel" && index_named(SIDES_NAMES, value)) {
+@@ -679,7 +682,7 @@ known_settings(const GameList &games, int button)
+ {
+ 	std::vector<Settings::Known> out = {
+ 		{ "display", "scale", "1" }, { "display", "upscale_mode", UPSCALE_MODES[0] }, { "display", "anisotropy", "1" },
+-		{ "display", "window", "1" },
++		{ "display", "window", "1" }, { "display", "shape", PICTURE_SHAPES[0] },
+ 		{ "display", "fullscreen", "off" }, { "display", "vsync", VSYNCS[static_cast<unsigned>(VSYNC)] },
+ 		{ "display", "bezel", SIDES_NAMES[static_cast<unsigned>(SIDES)] },
+ 		{ "display", "unthrottled", "off" }, { "display", "show_speed", "on" }, { "display", "filter", "none" },
 diff --git a/src/odin/host/app/options.hpp b/src/odin/host/app/options.hpp
 index 31918b5..3ac4953 100644
 --- a/src/odin/host/app/options.hpp
@@ -2637,7 +2667,7 @@ index b1bc982..e9308b3 100644
  bool
  FolderDialog::open() const
 diff --git a/src/odin/host/ui/menu.cpp b/src/odin/host/ui/menu.cpp
-index 0678015..a3016de 100644
+index 0678015..1d984a3 100644
 --- a/src/odin/host/ui/menu.cpp
 +++ b/src/odin/host/ui/menu.cpp
 @@ -136,6 +136,11 @@ constexpr float WIDE = 1.5f;
@@ -2678,6 +2708,34 @@ index 0678015..a3016de 100644
  
  	if (scale == m_scale && density == m_density)
  		return;
+@@ -667,6 +688,15 @@ Menu::page_display(MenuKit &kit, MenuState &state) const
+ 			state.upscale_mode = static_cast<unsigned>(upscale_mode);
+ 	});
+ 
++	/* The shape of the picture: as on the cabinet, or stretched wider */
++	static constexpr const char *SHAPES_SHOWN[] = { "4:3", "16:9", "Full" };
++	int shape = static_cast<int>(std::min(state.shape, 2u));
++
++	kit.next_tip("4:3 as on the cabinet; 16:9 a third wider, a little stretched; Full the whole screen, "
++	             "stretched.");
++	if (kit.choice("Picture shape", nullptr, SHAPES_SHOWN, shape))
++		state.shape = static_cast<unsigned>(shape);
++
+ 	int filter = anisotropy_index(state.anisotropy);
+ 
+ 	kit.next_tip("Sharpens distant textures, such as roads and floors (NASCAR, Virtual-On). The cabinet has none.");
+diff --git a/src/odin/host/ui/menu.hpp b/src/odin/host/ui/menu.hpp
+index d908c1f..7420e6a 100644
+--- a/src/odin/host/ui/menu.hpp
++++ b/src/odin/host/ui/menu.hpp
+@@ -153,6 +153,7 @@ struct BarSettings {
+ 	 * a second in the title; what draws (DisplayApi) and the card it draws
+ 	 * on (HostGraphics::gpus, empty: the best one), at the next launch */
+ 	unsigned scale = 1, upscale_mode = 0, anisotropy = 1, window = 1, vsync = 0, sides = 2, api = 0;
++	unsigned shape = 0;	/* of the picture (PICTURE_SHAPES) */
+ 	std::string filter, gpu_chosen;
+ 	std::vector<std::string> gpus;	/* the cards of the computer */
+ 	/* Only Vulkan can be told which card, with more than one to tell */
 diff --git a/src/odin/host/ui/menu_bar.cpp b/src/odin/host/ui/menu_bar.cpp
 index 0282be6..b7307d2 100644
 --- a/src/odin/host/ui/menu_bar.cpp
@@ -2706,6 +2764,50 @@ index 0282be6..b7307d2 100644
  	ImGui::Render();
  }
  
+diff --git a/src/odin/host/ui/menu_session.cpp b/src/odin/host/ui/menu_session.cpp
+index 430d3ff..7607768 100644
+--- a/src/odin/host/ui/menu_session.cpp
++++ b/src/odin/host/ui/menu_session.cpp
+@@ -33,6 +33,7 @@
+ 
+ #include "odin/common/env.hpp"
+ #include "odin/host/app/user_files.hpp"
++#include "odin/host/video/picture.hpp"
+ #include "odin/host/gfx/host_graphics.hpp"
+ #include "odin/machine/chips/von4_card.hpp"
+ 
+@@ -134,6 +135,8 @@ MenuSession::MenuSession(const Options &options, Display &display, Keyboard &key
+ 	state.scale = options.display.scale;
+ 	state.anisotropy = options.display.anisotropy;
+ 	state.upscale_mode = static_cast<unsigned>(options.display.upscale_mode);
++	state.shape = std::min(options.display.shape, 2u);
++	g_picture_shape = state.shape;
+ 	state.filter = options.display.filter;
+ 	state.window = options.display.window ? options.display.window : 1;
+ 	state.custom_w = options.display.window_w;
+diff --git a/src/odin/host/ui/menu_session_state.cpp b/src/odin/host/ui/menu_session_state.cpp
+index 27d5173..f2054fb 100644
+--- a/src/odin/host/ui/menu_session_state.cpp
++++ b/src/odin/host/ui/menu_session_state.cpp
+@@ -28,6 +28,7 @@
+ #include <cstdio>
+ 
+ #include "odin/host/app/user_files.hpp"
++#include "odin/host/video/picture.hpp"
+ #include "odin/host/ui/gun_drawing.hpp"
+ #include "odin/host/input/seats.hpp"
+ 
+@@ -535,6 +536,10 @@ MenuSession::apply_display(const MenuState &was)
+ 		m_display.set_anisotropy(now.anisotropy);
+ 		keep("anisotropy", kept_number(now.anisotropy, 1));
+ 	}
++	if (now.shape != was.shape && now.shape < std::size(PICTURE_SHAPES)) {
++		g_picture_shape = now.shape;
++		keep("shape", now.shape == 0 ? std::nullopt : std::optional<std::string>(PICTURE_SHAPES[now.shape]));
++	}
+ 	if (now.upscale_mode != was.upscale_mode && now.upscale_mode < std::size(UPSCALE_MODES)) {
+ 		m_display.set_upscale_mode(static_cast<DisplayUpscaleMode>(now.upscale_mode));
+ 		keep("upscale_mode", now.upscale_mode == 0 ? std::nullopt :
 diff --git a/src/odin/host/ui/system_fonts.cpp b/src/odin/host/ui/system_fonts.cpp
 index d6b727c..f2e748b 100644
 --- a/src/odin/host/ui/system_fonts.cpp
@@ -2772,6 +2874,19 @@ index f185cd7..73a5337 100644
  		if (!m_message.empty())
  			std::snprintf(title, sizeof(title), "%s (%4.1f FPS) [%s]", m_title.c_str(), fps, m_message.c_str());
  		else
+diff --git a/src/odin/host/video/display_options.hpp b/src/odin/host/video/display_options.hpp
+index 971939e..5b3933c 100644
+--- a/src/odin/host/video/display_options.hpp
++++ b/src/odin/host/video/display_options.hpp
+@@ -78,6 +78,8 @@ struct DisplayOptions {
+ 	/* The card Vulkan draws on by its name (HostGraphics::gpus); empty: the
+ 	 * best one */
+ 	std::string gpu;
++	/* The shape of the picture in the window (PICTURE_SHAPES) */
++	unsigned shape = 0;
+ };
+ 
+ } /* namespace odin */
 diff --git a/src/odin/host/video/display_window.cpp b/src/odin/host/video/display_window.cpp
 index 930cdc4..f5a6917 100644
 --- a/src/odin/host/video/display_window.cpp
@@ -2787,6 +2902,61 @@ index 930cdc4..f5a6917 100644
  	const bool on = fullscreen(), said = (SDL_GetWindowFlags(m_window) & SDL_WINDOW_FULLSCREEN) != 0;
  	unsigned w = 0, h = 0;
  
+diff --git a/src/odin/host/video/picture.hpp b/src/odin/host/video/picture.hpp
+index b61e667..05aabd6 100644
+--- a/src/odin/host/video/picture.hpp
++++ b/src/odin/host/video/picture.hpp
+@@ -26,6 +26,7 @@
+ #define ODIN_PICTURE_HPP
+ 
+ #include <algorithm>
++#include <atomic>
+ #include <cmath>
+ 
+ namespace odin {
+@@ -38,12 +39,19 @@ struct PictureHole {
+ 	double bezel_w = 0.0, bezel_h = 0.0;
+ };
+ 
++/* The shape of the picture in the window ([display] shape): 0 that of the
++ * screen of the hardware, 4 by 3; 1 wider, 16 by 9, a little stretched; 2
++ * the whole window, stretched */
++inline constexpr const char *PICTURE_SHAPES[] = { "4:3", "16:9", "fill" };
++inline std::atomic<unsigned> g_picture_shape{ 0 };
++
+ /* The bezel shows where the window is wider than the screen of the
+- * hardware, as large as the window holds it, in the middle */
++ * hardware, as large as the window holds it, in the middle; not around a
++ * picture stretched wider */
+ inline bool
+ bezel_shown(unsigned window_w, unsigned window_h)
+ {
+-	return window_w * 3 > window_h * 4;
++	return g_picture_shape.load() == 0 && window_w * 3 > window_h * 4;
+ }
+ 
+ /* Where the picture of the hardware goes in a window, from its top left
+@@ -57,6 +65,20 @@ struct PictureRect {
+ inline PictureRect
+ picture_rect(unsigned window_w, unsigned window_h, const PictureHole &hole = {})
+ {
++	const unsigned shape = g_picture_shape.load();
++
++	if (shape == 2)
++		return { 0, 0, window_w, window_h };
++	if (shape == 1) {
++		unsigned w = window_w, h = window_w * 9 / 16;
++
++		if (h > window_h) {
++			h = window_h;
++			w = window_h * 16 / 9;
++		}
++		return { (window_w - w) / 2, (window_h - h) / 2, w, h };
++	}
++
+ 	unsigned w = window_w, h = window_w * 3 / 4;
+ 
+ 	if (hole.w > 0.0 && hole.h > 0.0 && bezel_shown(window_w, window_h)) {
 diff --git a/src/odin/host/video/x11_window.cpp b/src/odin/host/video/x11_window.cpp
 index 42a24db..d7fcd6d 100644
 --- a/src/odin/host/video/x11_window.cpp
