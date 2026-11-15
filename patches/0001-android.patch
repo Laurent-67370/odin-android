@@ -671,7 +671,7 @@ index ecbd545..83d07f8 100644
  	if (GL_CLIP_SPACE == 0)
  		gl_Position.z = (gl_Position.z + gl_Position.w) * 0.5;
 diff --git a/src/odin/host/gfx/host_graphics_vk.cpp b/src/odin/host/gfx/host_graphics_vk.cpp
-index f990e61..67362b2 100644
+index f990e61..80ba4d9 100644
 --- a/src/odin/host/gfx/host_graphics_vk.cpp
 +++ b/src/odin/host/gfx/host_graphics_vk.cpp
 @@ -32,6 +32,7 @@
@@ -701,19 +701,75 @@ index f990e61..67362b2 100644
  	if (m_extent.width == 0 || m_extent.height == 0)
  		return;
  	if (!(caps.supportedUsageFlags & VK_IMAGE_USAGE_TRANSFER_DST_BIT))
-@@ -278,7 +291,7 @@ VkGraphics::make_swapchain()
+@@ -278,8 +291,14 @@ VkGraphics::make_swapchain()
  	const VkSwapchainCreateInfoKHR info{ VK_STRUCTURE_TYPE_SWAPCHAIN_CREATE_INFO_KHR, nullptr, 0, m_card->surface(),
  	                                     images, format.format, format.colorSpace, m_extent, 1,
  	                                     VK_IMAGE_USAGE_TRANSFER_DST_BIT, VK_SHARING_MODE_EXCLUSIVE, 0, nullptr,
 -	                                     caps.currentTransform, alpha, mode, VK_TRUE, VK_NULL_HANDLE };
 +	                                     transform, alpha, mode, VK_TRUE, VK_NULL_HANDLE };
  	m_card->check(m_fn.vkCreateSwapchainKHR(m_card->device(), &info, nullptr, &m_swapchain), "the swap chain");
++#if defined(__ANDROID__)
++	std::fprintf(stderr, "vulkan: the swap chain: %u images, %s (min %u)\n", images,
++	             mode == VK_PRESENT_MODE_IMMEDIATE_KHR ? "immediate" :
++	             mode == VK_PRESENT_MODE_MAILBOX_KHR   ? "mailbox" : "fifo, waiting for the display",
++	             caps.minImageCount);
++#endif
  
  	m_fn.vkGetSwapchainImagesKHR(m_card->device(), m_swapchain, &count, nullptr);
-@@ -340,9 +353,17 @@ VkGraphics::show_window()
+ 	m_chain.resize(count);
+@@ -312,6 +331,20 @@ VkGraphics::show_window()
+ 	const VkCommandBuffer cb = m_card->commands();
+ 	const VkSemaphore free = m_free[m_card->frame()];
+ 	uint32_t index = 0;
++#if defined(__ANDROID__)
++	/* A measure: where showing a frame waits, told every 300 frames */
++	static struct {
++		uint64_t acquire, end, present, worst[3];
++		unsigned frames;
++	} waits;
++	uint64_t at = SDL_GetTicksNS();
++	const auto spent = [&](uint64_t &sum, uint64_t &worst) {
++		const uint64_t now = SDL_GetTicksNS();
++		sum += now - at;
++		worst = std::max(worst, now - at);
++		at = now;
++	};
++#endif
+ 
+ 	if (!m_swapchain ||
+ 	    m_fn.vkAcquireNextImageKHR(m_card->device(), m_swapchain, UINT64_MAX, free, VK_NULL_HANDLE, &index) < 0) {
+@@ -320,6 +353,9 @@ VkGraphics::show_window()
+ 		return;
+ 	}
+ 
++#if defined(__ANDROID__)
++	spent(waits.acquire, waits.worst[0]);
++#endif
+ 	vk::Image &window = m_card->window_image();
+ 	if (!window.image)
+ 		clear_window(m_extent.width, m_extent.height);
+@@ -336,13 +372,35 @@ VkGraphics::show_window()
+ 	level_barrier(m_fn, cb, m_chain[index], 0, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, VK_IMAGE_LAYOUT_PRESENT_SRC_KHR,
+ 	              VK_PIPELINE_STAGE_2_NONE, VK_ACCESS_2_NONE);
+ 	m_card->end_frame({ free, m_drawn[index] });
++#if defined(__ANDROID__)
++	spent(waits.end, waits.worst[1]);
++#endif
+ 
  	const VkPresentInfoKHR present{ VK_STRUCTURE_TYPE_PRESENT_INFO_KHR, nullptr, 1, &m_drawn[index], 1, &m_swapchain,
  	                                &index, nullptr };
  	const VkResult result = m_fn.vkQueuePresentKHR(m_card->queue(), &present);
++#if defined(__ANDROID__)
++	spent(waits.present, waits.worst[2]);
++	if (++waits.frames >= 300) {
++		const double n = 1e6 * waits.frames;
++		const auto d = [](uint64_t v) { return static_cast<double>(v); };
++		std::fprintf(stderr, "window: a frame in ms [worst]: image acquired %.2f [%.1f], frame ended %.2f [%.1f], "
++		             "presented %.2f [%.1f]\n", d(waits.acquire) / n, d(waits.worst[0]) / 1e6, d(waits.end) / n,
++		             d(waits.worst[1]) / 1e6, d(waits.present) / n, d(waits.worst[2]) / 1e6);
++		waits = {};
++	}
++#endif
 +#if defined(__ANDROID__)
 +	/* Suboptimal there only says that Android turns the images itself (the
 +	 * identity above, the screen turned); a new size remakes the chain */
