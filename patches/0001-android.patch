@@ -378,7 +378,7 @@ index ddbdf32..5a222d1 100644
  		return buffers > 0 && primitive_ids() && (es_version() >= 32 || has_extension("GL_OES_shader_image_atomic"));
  	}();
 diff --git a/src/odin/host/gfx/glsl/mesh.frag b/src/odin/host/gfx/glsl/mesh.frag
-index bcae486..bb3118e 100644
+index bcae486..0fb5f22 100644
 --- a/src/odin/host/gfx/glsl/mesh.frag
 +++ b/src/odin/host/gfx/glsl/mesh.frag
 @@ -105,6 +105,23 @@ layout(set = 3, binding = 4) uniform sampler2D u_eye;
@@ -413,7 +413,22 @@ index bcae486..bb3118e 100644
  #define u_lights u_lightsets[u_lightset].lights
  #define u_ambient u_views[u_view].ambient
  #define u_texture sampler2D (u_texels, u_sampling)
-@@ -345,8 +363,12 @@ main (void)
+@@ -293,6 +311,14 @@ main (void)
+ 	vec3 base;
+ 	float alpha;
+ 	ivec2 pixel = ivec2 (gl_FragCoord.xy);
++#if defined(DRAW_TABLE) && COLLECT == 0
++	/* A measure (renderer_times.cpp): the fragments of one colour, to
++	 * weigh their shading against the rest of a draw */
++	if (p_draw_g.w > 0.5) {
++		fragColor = vec4 (0.5, 0.5, 0.5, 1.0);
++		return;
++	}
++#endif
+ 
+ 	p_position = q_position;
+ 	p_normal = q_normal;
+@@ -345,8 +371,12 @@ main (void)
  	 * near planes the games send, the projected depth cannot tell apart
  	 * surfaces that the cabinets do (the shadow of the AIRTRIX combo
  	 * labels lies 0.06 behind them at a depth of 560). */
@@ -458,10 +473,10 @@ index ec9f236..80fcc81 100644
  }
  
 diff --git a/src/odin/host/gfx/glsl/mesh.vert b/src/odin/host/gfx/glsl/mesh.vert
-index ecbd545..e345db3 100644
+index ecbd545..83d07f8 100644
 --- a/src/odin/host/gfx/glsl/mesh.vert
 +++ b/src/odin/host/gfx/glsl/mesh.vert
-@@ -44,6 +44,38 @@ layout(std430, set = 0, binding = 0) readonly buffer views_t {
+@@ -44,6 +44,39 @@ layout(std430, set = 0, binding = 0) readonly buffer views_t {
  layout(std430, set = 0, binding = 1) readonly buffer modelviews_t {
  	mat4 u_modelviews[];
  };
@@ -478,6 +493,7 @@ index ecbd545..e345db3 100644
 +	uint snap;
 +	float scale;
 +	float family;
++	uint plain;	/* a measure: the fragments of one colour (scene_vk.cpp) */
 +};
 +layout(std430, set = 0, binding = 3) readonly buffer draws_t {
 +	draw_t u_draws[];
@@ -500,7 +516,7 @@ index ecbd545..e345db3 100644
  layout(push_constant) uniform mesh_t {
  	uint u_view, u_mv, u_mv2, u_lightset;
  	float u_depth_scale, u_alpha_ref, u_weigh_by_alpha;
-@@ -54,6 +86,7 @@ layout(push_constant) uniform mesh_t {
+@@ -54,6 +87,7 @@ layout(push_constant) uniform mesh_t {
  	float u_scale;
  	float u_family;
  };
@@ -508,7 +524,7 @@ index ecbd545..e345db3 100644
  /* 0: the card clips z from 0 to w, not from -w to w as OpenGL */
  layout(constant_id = 0) const int GL_CLIP_SPACE = 1;
  #define u_projection u_views[u_view].projection
-@@ -118,8 +151,18 @@ layout(location = 7) out float p_alpha;
+@@ -118,8 +152,19 @@ layout(location = 7) out float p_alpha;
  layout(location = 8) flat out vec2 p_corner0;
  layout(location = 9) flat out vec2 p_corner1;
  layout(location = 10) flat out vec2 p_corner2;
@@ -522,12 +538,13 @@ index ecbd545..e345db3 100644
 +#ifdef DRAW_TABLE
 +	p_draw_u = uvec4 (u_view, u_lightset, u_pattern, u_order);
 +	p_draw_f = vec4 (u_alpha_ref, u_weigh_by_alpha, u_sort_scale, u_scale);
-+	p_draw_g = vec4 (u_family, u_depth_scale, uintBitsToFloat (u_blend_mode), 0.0);
++	p_draw_g = vec4 (u_family, u_depth_scale, uintBitsToFloat (u_blend_mode),
++	                 float (u_draws[gl_InstanceIndex].plain));
 +#endif
  	/* 1: the second modelview, 64: without the 3x3, 128: without
  	 * the last row. A normal goes through the 3x3 of its modelview,
  	 * as the position does (US patent 6,714,690 of SEGA: the same
-@@ -148,6 +191,13 @@ void main (void) {
+@@ -148,6 +193,13 @@ void main (void) {
  	}
  	/* The depth bias brings the whole position nearer: same pixel. */
  	gl_Position = mul (u_projection, vec4 (p_position.xyz * u_depth_scale, 1.0));
@@ -1272,7 +1289,7 @@ index 0000000..d8b10a4
 +
 +#endif /* ODIN_TOUCH_PAD_HPP */
 diff --git a/src/odin/host/renderer/hikaru/drawing.hpp b/src/odin/host/renderer/hikaru/drawing.hpp
-index 92dcbe5..2fcdaa6 100644
+index 92dcbe5..61763fe 100644
 --- a/src/odin/host/renderer/hikaru/drawing.hpp
 +++ b/src/odin/host/renderer/hikaru/drawing.hpp
 @@ -48,6 +48,16 @@
@@ -1285,7 +1302,7 @@ index 92dcbe5..2fcdaa6 100644
 +struct DrawCounts {
 +	uint64_t scenes = 0, families = 0, pipelines = 0, draws = 0;
 +	uint64_t calls = 0;	/* the calls the draws went in (Android: runs of them) */
-+	bool one_by_one = false;	/* each draw its own call, to compare (renderer_times.cpp) */
++	bool plain = false;	/* Android: the fragments of one colour, a measure (renderer_times.cpp) */
 +};
 +inline DrawCounts g_draw_counts;
 +
@@ -1407,7 +1424,7 @@ index 1253845..eb1d710 100644
  
  GLuint
 diff --git a/src/odin/host/renderer/hikaru/renderer_times.cpp b/src/odin/host/renderer/hikaru/renderer_times.cpp
-index 91fa8e4..6fda7d4 100644
+index 91fa8e4..c6792d9 100644
 --- a/src/odin/host/renderer/hikaru/renderer_times.cpp
 +++ b/src/odin/host/renderer/hikaru/renderer_times.cpp
 @@ -125,6 +125,23 @@ DrawTimes::end()
@@ -1418,14 +1435,14 @@ index 91fa8e4..6fda7d4 100644
 +	 * without being closed (the app of a phone left) */
 +	if (m_drawn >= 300) {
 +		tell();
-+		/* Android: the next 300 frames the other way, to compare the
-+		 * runs of draws with the draws one by one in the same game */
-+		const bool one_by_one = g_draw_counts.one_by_one;
++		/* Android: the next 300 frames the other way, to weigh the
++		 * shading of the fragments against the rest in the same game */
++		const bool plain = g_draw_counts.plain;
 +		g_draw_counts = {};
 +#if defined(__ANDROID__)
-+		g_draw_counts.one_by_one = !one_by_one;
++		g_draw_counts.plain = !plain;
 +#else
-+		(void)one_by_one;
++		(void)plain;
 +#endif
 +		m_sums = {};
 +		m_drawn = m_read = m_lists = m_fragments = 0;
@@ -1440,7 +1457,7 @@ index 91fa8e4..6fda7d4 100644
  	std::fprintf(stderr, "\n");
 +	const double frames = static_cast<double>(m_drawn);
 +	std::fprintf(stderr, "drawing:  [%s] a frame: %.1f calls of draws, %.1f scene renderings, %.1f family renderings, "
-+	             "%.1f pipelines bound, %.1f draws\n", g_draw_counts.one_by_one ? "one draw a call" : "draws in runs",
++	             "%.1f pipelines bound, %.1f draws\n", g_draw_counts.plain ? "fragments of one colour" : "fragments shaded",
 +	             static_cast<double>(g_draw_counts.calls) / frames, static_cast<double>(g_draw_counts.scenes) / frames,
 +	             static_cast<double>(g_draw_counts.families) / frames,
 +	             static_cast<double>(g_draw_counts.pipelines) / frames,
@@ -1449,19 +1466,21 @@ index 91fa8e4..6fda7d4 100644
  
  } /* namespace odin */
 diff --git a/src/odin/host/renderer/hikaru/vk/drawing_vk.hpp b/src/odin/host/renderer/hikaru/vk/drawing_vk.hpp
-index 2c8c5a7..87e4f4e 100644
+index 2c8c5a7..801c683 100644
 --- a/src/odin/host/renderer/hikaru/vk/drawing_vk.hpp
 +++ b/src/odin/host/renderer/hikaru/vk/drawing_vk.hpp
-@@ -159,6 +159,8 @@ private:
+@@ -158,7 +158,10 @@ private:
+ 		uint32_t snap;
  		float scale;
  		float family;
++		uint32_t plain;	/* Android: a measure, the fragments of one colour */
  	};
-+	/* draw_t of glsl/mesh.vert (std430: 14 words) */
-+	static_assert(sizeof(MeshPush) == 56);
++	/* draw_t of glsl/mesh.vert (std430: 15 words) */
++	static_assert(sizeof(MeshPush) == 60);
  
  	/* The number of the picture of the frame, as the window reads it;
  	 * the format of the pictures */
-@@ -276,6 +278,22 @@ private:
+@@ -276,6 +279,22 @@ private:
  	SceneDebug m_debug{};
  	vk::Slice m_vertices{}, m_indices{}, m_views{}, m_lightsets{};
  	VkDescriptorSet m_list_set = VK_NULL_HANDLE;
@@ -1499,7 +1518,7 @@ index a5b195c..a066dee 100644
  		m_card.destroy_image(*image);
  	for (vk::Pass *pass : { &m_blender, &m_compose, &m_presenter })
 diff --git a/src/odin/host/renderer/hikaru/vk/scene_vk.cpp b/src/odin/host/renderer/hikaru/vk/scene_vk.cpp
-index 81bdb45..7a79db9 100644
+index 81bdb45..c212142 100644
 --- a/src/odin/host/renderer/hikaru/vk/scene_vk.cpp
 +++ b/src/odin/host/renderer/hikaru/vk/scene_vk.cpp
 @@ -43,6 +43,7 @@
@@ -1795,7 +1814,13 @@ index 81bdb45..7a79db9 100644
  	}
  	set_view(mesh);
  	if (variant.has_texture)
-@@ -939,9 +1100,22 @@ VkDrawing::draw_mesh(const odin_mesh_t &mesh, const MeshDraw &draw)
+@@ -934,14 +1095,26 @@ VkDrawing::draw_mesh(const odin_mesh_t &mesh, const MeshDraw &draw)
+ 		m_push.mv = mv;
+ 		m_push.mv2 = modelview2_of(*m_list, mesh, mv);
+ 		m_push.order = m_pass.order;
++		m_push.plain = g_draw_counts.plain ? 1 : 0;
+ 		if (variant.collect)
+ 			m_pass.order += mesh.num_tris;
  		if (m_debug.log)
  			log("mv  = [%u+%u] %s", mesh.mv_index, i,
  			    odin_modelview_str(mv == m_identity ? &IDENTITY : &m_list->mv_list[mv]));
@@ -1806,8 +1831,6 @@ index 81bdb45..7a79db9 100644
 +		std::memcpy(m_draws.bytes + sizeof(MeshPush) * m_draws_used, &m_push, sizeof(m_push));
 +		m_pending.push_back({ mesh.num_tris * 3, 1, mesh.first_index, 0, m_draws_used++ });
 +		g_draw_counts.draws++;
-+		if (g_draw_counts.one_by_one)
-+			flush_draws();
 +#else
  		m_fn.vkCmdPushConstants(cb, m_mesh_layout, VK_SHADER_STAGE_VERTEX_BIT | VK_SHADER_STAGE_FRAGMENT_BIT, 0,
  		                        sizeof(m_push), &m_push);
