@@ -1068,10 +1068,10 @@ index 3cad3b1..b54f8d8 100644
  
 diff --git a/src/odin/host/input/touch_pad.cpp b/src/odin/host/input/touch_pad.cpp
 new file mode 100644
-index 0000000..1b5c6b8
+index 0000000..356a72d
 --- /dev/null
 +++ b/src/odin/host/input/touch_pad.cpp
-@@ -0,0 +1,704 @@
+@@ -0,0 +1,749 @@
 +/*
 + *  ██████╗ ██████╗ ██╗███╗   ██╗
 + * ██╔═══██╗██╔══██╗██║████╗  ██║
@@ -1104,6 +1104,7 @@ index 0000000..1b5c6b8
 +#include <cmath>
 +#include <cstdio>
 +#include <mutex>
++#include <string_view>
 +#include <vector>
 +
 +#include <SDL3/SDL.h>
@@ -1193,6 +1194,7 @@ index 0000000..1b5c6b8
 +	int part = NOTHING;	/* a Part, or PANEL_KEY */
 +	float x = 0, y = 0;	/* points */
 +	int shortcut = -1;	/* on PANEL_KEY: its SHORTCUTS */
++	float ox = 0, oy = 0;	/* on the stick: its centre, where the finger came down */
 +};
 +
 +/* A key to send to Odin, from its own thread (touch_pad_draw) */
@@ -1228,6 +1230,10 @@ index 0000000..1b5c6b8
 +};
 +
 +State g_state;
++/* The touches that landed on a part, for a short buzz (Odin's thread) */
++std::atomic<unsigned> g_buzzes{ 0 };
++SDL_Haptic *g_haptic = nullptr;
++bool g_haptic_looked = false;
 +std::atomic<Uint64> g_drawn_ns{ 0 };
 +std::atomic<bool> g_hidden{ false };
 +std::atomic<float> g_fps{ 0.0f };
@@ -1340,7 +1346,8 @@ index 0000000..1b5c6b8
 +	for (int p = BUTTON_A; p < PARTS; p++)
 +		if (s[static_cast<size_t>(p)].hit(x, y, 1.15f))
 +			return static_cast<Part>(p);
-+	if (s[STICK].hit(x, y, 1.7f))
++	/* The stick floats: it takes a thumb that comes down near it */
++	if (s[STICK].hit(x, y, 2.3f))
 +		return STICK;
 +	return NOTHING;
 +}
@@ -1398,6 +1405,7 @@ index 0000000..1b5c6b8
 +			}
 +			if (part == TOOLS) {
 +				g_state.panel = !g_state.panel;
++				g_buzzes++;
 +				return true;
 +			}
 +			if (part == NOTHING && shortcut < 0)
@@ -1405,8 +1413,17 @@ index 0000000..1b5c6b8
 +			for (Finger &free : g_state.fingers)
 +				if (free.part == NOTHING) {
 +					free = { event->tfinger.fingerID, shortcut >= 0 ? PANEL_KEY : part, x, y, shortcut };
++					if (part == STICK && shortcut < 0) {
++						/* Its centre under the thumb, the whole ring on
++						 * the screen */
++						const float r = g_state.shapes[STICK].w;
++
++						free.ox = std::clamp(x, r, std::max(r, g_state.room_w * 0.5f));
++						free.oy = std::clamp(y, r, std::max(r, g_state.room_h - r));
++					}
 +					if (shortcut >= 0)
 +						press_shortcut(shortcut, true);
++					g_buzzes++;
 +					break;
 +				}
 +		} else if (f && f->part == PANEL_KEY) {
@@ -1479,7 +1496,7 @@ index 0000000..1b5c6b8
 +				continue;
 +			if (f.part == STICK) {
 +				const Shape &s = g_state.shapes[STICK];
-+				float dx = (f.x - s.x) / s.w, dy = (f.y - s.y) / s.w;
++				float dx = (f.x - f.ox) / s.w, dy = (f.y - f.oy) / s.w;
 +				const float length = std::hypot(dx, dy);
 +
 +				if (length > 1.0f) {
@@ -1618,7 +1635,7 @@ index 0000000..1b5c6b8
 +	Shape panel_box;
 +	bool panel;
 +	int armed;
-+	ImVec2 knob;
++	ImVec2 knob, stick_at;
 +	bool connected;
 +	{
 +		const std::lock_guard<std::mutex> lock(g_state.mutex);
@@ -1637,6 +1654,7 @@ index 0000000..1b5c6b8
 +		keys.swap(g_state.keys_to_send);
 +		connected = g_state.id != 0;
 +		knob = { shapes[STICK].x, shapes[STICK].y };
++		stick_at = knob;
 +		for (const Finger &f : g_state.fingers) {
 +			if (f.part == NOTHING)
 +				continue;
@@ -1647,14 +1665,16 @@ index 0000000..1b5c6b8
 +			held[static_cast<size_t>(f.part)] = true;
 +			if (f.part == STICK) {
 +				const Shape &s = shapes[STICK];
-+				float dx = f.x - s.x, dy = f.y - s.y;
++				float dx = f.x - f.ox, dy = f.y - f.oy;
++
++				stick_at = { f.ox, f.oy };
 +				const float length = std::hypot(dx, dy);
 +
 +				if (length > s.w) {
 +					dx *= s.w / length;
 +					dy *= s.w / length;
 +				}
-+				knob = { s.x + dx, s.y + dy };
++				knob = { f.ox + dx, f.oy + dy };
 +			}
 +		}
 +	}
@@ -1671,6 +1691,31 @@ index 0000000..1b5c6b8
 +		event.key.mod = k.mod;
 +		event.key.down = k.down;
 +		SDL_PushEvent(&event);
++	}
++	/* A short buzz for each touch that landed on the pad: the phone's
++	 * vibrator, as SDL gives it (Android's VIBRATOR_SERVICE) */
++	if (const unsigned buzzes = g_buzzes.exchange(0); buzzes && !SDL_getenv("ODIN_NO_BUZZ")) {
++		if (!g_haptic_looked) {
++			g_haptic_looked = true;
++			int count = 0;
++
++			if (SDL_InitSubSystem(SDL_INIT_HAPTIC))
++				if (SDL_HapticID *const haptics = SDL_GetHaptics(&count)) {
++					/* The phone's own, not a gamepad's */
++					for (int i = 0; i < count && !g_haptic; i++)
++						if (const char *name = SDL_GetHapticNameForID(haptics[i]))
++							if (std::string_view(name) == "VIBRATOR_SERVICE")
++								g_haptic = SDL_OpenHaptic(haptics[i]);
++					SDL_free(haptics);
++				}
++			if (g_haptic && !SDL_InitHapticRumble(g_haptic)) {
++				SDL_CloseHaptic(g_haptic);
++				g_haptic = nullptr;
++			}
++			std::printf("touch pad: %s\n", g_haptic ? "buzzes" : "no vibrator to buzz");
++		}
++		if (g_haptic)
++			SDL_PlayHapticRumble(g_haptic, 0.4f, 12);
 +	}
 +	if (!connected)
 +		return;
@@ -1699,8 +1744,8 @@ index 0000000..1b5c6b8
 +		const ImU32 inside = held[static_cast<size_t>(p)] ? pressed : fill;
 +
 +		if (p == STICK) {
-+			draw->AddCircleFilled({ s.x, s.y }, s.w, IM_COL32(255, 255, 255, 25), 48);
-+			draw->AddCircle({ s.x, s.y }, s.w, line, 48, thick);
++			draw->AddCircleFilled(stick_at, s.w, IM_COL32(255, 255, 255, 25), 48);
++			draw->AddCircle(stick_at, s.w, line, 48, thick);
 +			draw->AddCircleFilled(knob, s.w * 0.45f, inside, 32);
 +			draw->AddCircle(knob, s.w * 0.45f, line, 32, thick);
 +			continue;

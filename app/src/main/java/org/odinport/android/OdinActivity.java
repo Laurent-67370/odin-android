@@ -5,6 +5,7 @@ import android.os.Build;
 import android.os.Bundle;
 import android.system.ErrnoException;
 import android.system.Os;
+import android.view.InputDevice;
 import android.view.View;
 import android.view.WindowInsets;
 import android.view.WindowInsetsController;
@@ -44,6 +45,15 @@ public class OdinActivity extends SDLActivity {
         }
         super.onCreate(saved);
         hideBars();
+        touchAtOnce();
+    }
+
+    /** The touches given to the game as they come, not gathered until the
+     *  next frame of the screen (up to 16 ms sooner) */
+    private void touchAtOnce() {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R && mSurface != null) {
+            mSurface.requestUnbufferedDispatch(InputDevice.SOURCE_TOUCHSCREEN);
+        }
     }
 
     @Override
@@ -55,6 +65,7 @@ public class OdinActivity extends SDLActivity {
     protected void onResume() {
         super.onResume();
         hideBars();
+        touchAtOnce();
     }
 
     @Override
