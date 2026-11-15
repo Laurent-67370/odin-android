@@ -86,6 +86,10 @@ par seconde** en course : la carte graphique travaille environ 9 ms sur les
   rotation est respecté) : la manette se place autour de l'image dans les deux.
 - **Plein écran** : les barres d'Android restent masquées (un balayage depuis le
   bord les fait revenir un instant), aussi au retour dans l'application.
+- **Format de l'image** (MENU → Display → 3D QUALITY → *Picture shape*) :
+  **4:3** comme la borne (bandes sur les côtés), **16:9** un tiers plus large
+  (un peu étiré) ou **Full**, toute la largeur de l'écran (étiré). Enregistré
+  dans `odin.ini` (`[display] shape`).
 - **Menus lisibles** : en paysage, la bibliothèque et le menu d'Odin sont
   agrandis ×3 selon la densité de l'écran (en portrait, trop étroit, ils gardent
   leur taille).
