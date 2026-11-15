@@ -1068,10 +1068,10 @@ index 3cad3b1..b54f8d8 100644
  
 diff --git a/src/odin/host/input/touch_pad.cpp b/src/odin/host/input/touch_pad.cpp
 new file mode 100644
-index 0000000..a24ba83
+index 0000000..1b5c6b8
 --- /dev/null
 +++ b/src/odin/host/input/touch_pad.cpp
-@@ -0,0 +1,657 @@
+@@ -0,0 +1,704 @@
 +/*
 + *  ██████╗ ██████╗ ██╗███╗   ██╗
 + * ██╔═══██╗██╔══██╗██║████╗  ██║
@@ -1139,26 +1139,32 @@ index 0000000..a24ba83
 +/* The panel of shortcuts (TOOLS): the keys of the hotkeys of Odin by
 + * default (hotkeys.cpp), which a phone has not. TEST and SERVICE, the
 + * switches of the cabinet, are held as long as the finger is, and leave the
-+ * panel open to walk the test menus of the games; the others close it. */
++ * panel open to walk the test menus of the games; the others close it.
++ * GAMES (back to the library) and QUIT ask for a second touch. */
 +struct Shortcut {
 +	const char *label;
 +	const char *hint;
 +	SDL_Keycode key;
 +	SDL_Keymod mod;
 +	bool stays;
++	bool confirm;
 +};
 +
 +constexpr Shortcut SHORTCUTS[] = {
-+	{ "SAVE", "state", SDLK_F2, SDL_KMOD_NONE, false },
-+	{ "LOAD", "state", SDLK_F4, SDL_KMOD_NONE, false },
-+	{ "PAUSE", "on / off", SDLK_P, SDL_KMOD_NONE, false },
-+	{ "RESET", "cabinet", SDLK_R, SDL_KMOD_LCTRL, false },
-+	{ "TEST", "cabinet", SDLK_0, SDL_KMOD_NONE, true },
-+	{ "SERVICE", "cabinet", SDLK_9, SDL_KMOD_NONE, true },
-+	{ "CARD", "in / out", SDLK_F6, SDL_KMOD_NONE, false },
-+	{ "CLOSE", "this panel", SDLK_UNKNOWN, SDL_KMOD_NONE, false },
++	{ "SAVE", "state", SDLK_F2, SDL_KMOD_NONE, false, false },
++	{ "LOAD", "state", SDLK_F4, SDL_KMOD_NONE, false, false },
++	{ "PAUSE", "on / off", SDLK_P, SDL_KMOD_NONE, false, false },
++	{ "RESET", "cabinet", SDLK_R, SDL_KMOD_LCTRL, false, false },
++	{ "QUIT", "Odin", SDLK_Q, SDL_KMOD_LCTRL, false, true },
++	{ "TEST", "cabinet", SDLK_0, SDL_KMOD_NONE, true, false },
++	{ "SERVICE", "cabinet", SDLK_9, SDL_KMOD_NONE, true, false },
++	{ "CARD", "in / out", SDLK_F6, SDL_KMOD_NONE, false, false },
++	{ "GAMES", "the list", SDLK_C, SDL_KMOD_LCTRL, false, true },
++	{ "CLOSE", "this panel", SDLK_UNKNOWN, SDL_KMOD_NONE, false, false },
 +};
-+constexpr int SHORTCUT_COLUMNS = 4;
++constexpr int SHORTCUT_COLUMNS = 5;
++/* How long a shortcut that asks for a second touch waits for it */
++constexpr Uint64 CONFIRM_NS = 4'000'000'000;
 +constexpr int SHORTCUT_COUNT = static_cast<int>(sizeof(SHORTCUTS) / sizeof(SHORTCUTS[0]));
 +
 +/* The buttons of the virtual gamepad, in the order SDL numbers them */
@@ -1204,6 +1210,11 @@ index 0000000..a24ba83
 +	std::array<Shape, PARTS> shapes{};
 +	/* The panel of shortcuts: open or not, its box and its keys */
 +	bool panel = false;
++	/* A shortcut touched once that asks for a second touch (-1: none),
++	 * since when, and the one whose key went down on the second */
++	int armed = -1;
++	Uint64 armed_ns = 0;
++	int confirmed = -1;
 +	Shape panel_box;
 +	std::array<Shape, SHORTCUT_COUNT> panel_keys{};
 +	std::vector<KeySent> keys_to_send;
@@ -1299,6 +1310,23 @@ index 0000000..a24ba83
 +{
 +	const Shortcut &shortcut = SHORTCUTS[k];
 +
++	if (shortcut.confirm) {
++		if (down) {
++			if (g_state.armed == k && SDL_GetTicksNS() - g_state.armed_ns < CONFIRM_NS) {
++				g_state.keys_to_send.push_back({ shortcut.key, shortcut.mod, true });
++				g_state.confirmed = k;
++			} else {
++				g_state.armed = k;
++				g_state.armed_ns = SDL_GetTicksNS();
++			}
++		} else if (g_state.confirmed == k) {
++			g_state.keys_to_send.push_back({ shortcut.key, shortcut.mod, false });
++			g_state.confirmed = g_state.armed = -1;
++			g_state.panel = false;
++		}
++		return;
++	}
++	g_state.armed = -1;
 +	if (shortcut.key != SDLK_UNKNOWN)
 +		g_state.keys_to_send.push_back({ shortcut.key, shortcut.mod, down });
 +	if (!down && !shortcut.stays)
@@ -1589,6 +1617,7 @@ index 0000000..a24ba83
 +	std::vector<KeySent> keys;
 +	Shape panel_box;
 +	bool panel;
++	int armed;
 +	ImVec2 knob;
 +	bool connected;
 +	{
@@ -1599,7 +1628,10 @@ index 0000000..a24ba83
 +		lay_out(g_state.shapes, room.x, room.y);
 +		lay_out_panel(g_state.panel_box, g_state.panel_keys, room.x, room.y);
 +		shapes = g_state.shapes;
++		if (!g_state.panel || SDL_GetTicksNS() - g_state.armed_ns >= CONFIRM_NS)
++			g_state.armed = -1;
 +		panel = g_state.panel;
++		armed = g_state.armed;
 +		panel_box = g_state.panel_box;
 +		panel_keys = g_state.panel_keys;
 +		keys.swap(g_state.keys_to_send);
@@ -1706,6 +1738,7 @@ index 0000000..a24ba83
 +	const ImVec2 b{ panel_box.x + panel_box.w * 0.5f, panel_box.y + panel_box.h * 0.5f };
 +	const float title = 0.045f * u, label = 0.05f * u, hint = 0.032f * u;
 +	const ImU32 accent = IM_COL32(110, 200, 210, 230), faint = IM_COL32(255, 255, 255, 120);
++	const ImU32 warning = IM_COL32(230, 110, 95, 230);
 +
 +	draw->AddRectFilled({ 0, 0 }, room, IM_COL32(0, 0, 0, 110));
 +	draw->AddRectFilled(a, b, IM_COL32(24, 26, 30, 235), 0.04f * u);
@@ -1714,17 +1747,31 @@ index 0000000..a24ba83
 +	for (int k = 0; k < SHORTCUT_COUNT; k++) {
 +		const Shape &s = panel_keys[static_cast<size_t>(k)];
 +		const ImVec2 ka{ s.x - s.w * 0.5f, s.y - s.h * 0.5f }, kb{ s.x + s.w * 0.5f, s.y + s.h * 0.5f };
-+		const bool cabinet = SHORTCUTS[k].stays;
++		const Shortcut &shortcut = SHORTCUTS[k];
++		const bool waits = armed == k;
++		/* The keys of the cabinet in the accent, those that leave the
++		 * game in red, red filled when they wait for the second touch */
++		const ImU32 border = shortcut.stays ? accent : shortcut.confirm ? warning : line;
++		const char *const name = waits ? "SURE?" : shortcut.label;
++		const char *const under = waits ? "touch again" : shortcut.hint;
 +
-+		draw->AddRectFilled(ka, kb, panel_held[static_cast<size_t>(k)] ? pressed : fill, s.h * 0.25f);
-+		draw->AddRect(ka, kb, cabinet ? accent : line, s.h * 0.25f, 0, thick);
++		draw->AddRectFilled(ka, kb, waits ? IM_COL32(200, 70, 60, 120) :
++		                            panel_held[static_cast<size_t>(k)] ? pressed : fill, s.h * 0.25f);
++		draw->AddRect(ka, kb, border, s.h * 0.25f, 0, thick);
 +
-+		const ImVec2 big = font->CalcTextSizeA(label, 1e9f, 0.0f, SHORTCUTS[k].label);
-+		const ImVec2 small = font->CalcTextSizeA(hint, 1e9f, 0.0f, SHORTCUTS[k].hint);
++		/* The words as large as the key holds them */
++		ImVec2 big = font->CalcTextSizeA(label, 1e9f, 0.0f, name);
++		ImVec2 small = font->CalcTextSizeA(hint, 1e9f, 0.0f, under);
++		const float fit_big = big.x > s.w * 0.86f ? s.w * 0.86f / big.x : 1.0f;
++		const float fit_small = small.x > s.w * 0.9f ? s.w * 0.9f / small.x : 1.0f;
++		const float size_big = label * fit_big, size_small = hint * fit_small;
++
++		big = { big.x * fit_big, big.y * fit_big };
++		small = { small.x * fit_small, small.y * fit_small };
 +		const float top = s.y - (big.y + small.y * 1.1f) * 0.5f;
 +
-+		draw->AddText(font, label, { s.x - big.x * 0.5f, top }, text, SHORTCUTS[k].label);
-+		draw->AddText(font, hint, { s.x - small.x * 0.5f, top + big.y * 1.1f }, faint, SHORTCUTS[k].hint);
++		draw->AddText(font, size_big, { s.x - big.x * 0.5f, top }, text, name);
++		draw->AddText(font, size_small, { s.x - small.x * 0.5f, top + big.y * 1.1f }, faint, under);
 +	}
 +}
 +
