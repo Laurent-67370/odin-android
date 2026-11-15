@@ -2247,6 +2247,48 @@ index b1bc982..e9308b3 100644
  
  bool
  FolderDialog::open() const
+diff --git a/src/odin/host/ui/menu.cpp b/src/odin/host/ui/menu.cpp
+index 0678015..a3016de 100644
+--- a/src/odin/host/ui/menu.cpp
++++ b/src/odin/host/ui/menu.cpp
+@@ -136,6 +136,11 @@ constexpr float WIDE = 1.5f;
+  * sooner, as the window is larger (the drawings of the page Input already
+  * are, at 1600 by 900) */
+ constexpr float LETTERS_UP = 0.45f;
++#if defined(__ANDROID__)
++/* The least room the menu keeps on a phone, in points (Menu::follow_scale) */
++constexpr float PHONE_W = 760.0f;
++constexpr float PHONE_H = 340.0f;
++#endif
+ 
+ /* The size of the menu in a window of that size, and the size it is made
+  * for */
+@@ -400,8 +405,24 @@ Menu::follow_scale()
+ 	SDL_GetWindowSize(m_window, &w, &h);
+ 
+ 	const auto [size, made] = menu_size(static_cast<float>(w), static_cast<float>(h));
+-	const float scale = std::max(1.0f, std::min(size.x / made.x, size.y / made.y));
++	float scale = std::max(1.0f, std::min(size.x / made.x, size.y / made.y));
+ 	const float density = std::max(1.0f, SDL_GetWindowPixelDensity(m_window));
++#if defined(__ANDROID__)
++	/* A phone: its points are its pixels, a few to the millimetre, and the
++	 * menu made for a monitor is too small to read. It takes the whole
++	 * factor of the screen's density (3 at 420 dpi) where the window still
++	 * holds PHONE_W by PHONE_H points at it, the menu cramped no further
++	 * (a phone held flat; held upright, it is too narrow, and the menu
++	 * stays as it was) */
++	const float screen = SDL_GetDisplayContentScale(SDL_GetDisplayForWindow(m_window));
++	const float most = screen >= 1.5f ? std::round(screen) : 3.0f;
++
++	for (float k = most; k > scale; k -= 1.0f)
++		if (static_cast<float>(w) / k >= PHONE_W && static_cast<float>(h) / k >= PHONE_H) {
++			scale = k;
++			break;
++		}
++#endif
+ 
+ 	if (scale == m_scale && density == m_density)
+ 		return;
 diff --git a/src/odin/host/ui/menu_bar.cpp b/src/odin/host/ui/menu_bar.cpp
 index 0282be6..b7307d2 100644
 --- a/src/odin/host/ui/menu_bar.cpp
