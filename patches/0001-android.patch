@@ -954,10 +954,10 @@ index 3cad3b1..b54f8d8 100644
  
 diff --git a/src/odin/host/input/touch_pad.cpp b/src/odin/host/input/touch_pad.cpp
 new file mode 100644
-index 0000000..eb8739d
+index 0000000..a24ba83
 --- /dev/null
 +++ b/src/odin/host/input/touch_pad.cpp
-@@ -0,0 +1,474 @@
+@@ -0,0 +1,657 @@
 +/*
 + *  ██████╗ ██████╗ ██╗███╗   ██╗
 + * ██╔═══██╗██╔══██╗██║████╗  ██║
@@ -990,6 +990,7 @@ index 0000000..eb8739d
 +#include <cmath>
 +#include <cstdio>
 +#include <mutex>
++#include <vector>
 +
 +#include <SDL3/SDL.h>
 +
@@ -1005,19 +1006,46 @@ index 0000000..eb8739d
 +	STICK = 0,
 +	BUTTON_A, BUTTON_B, BUTTON_X, BUTTON_Y,
 +	SHOULDER_L, SHOULDER_R, TRIGGER_L, TRIGGER_R,
-+	START, COIN, MENU,
-+	PARTS
++	START, COIN, MENU, TOOLS,
++	PARTS,
++	/* A finger on a key of the panel of shortcuts */
++	PANEL_KEY = PARTS
 +};
 +
-+constexpr const char *LABELS[PARTS] = { "", "A", "B", "X", "Y", "LB", "RB", "LT", "RT", "START", "COIN", "MENU" };
++constexpr const char *LABELS[PARTS] = { "", "A", "B", "X", "Y", "LB", "RB", "LT", "RT", "START", "COIN", "MENU", "" };
 +
 +/* The SDL button each part presses (none for the stick and the triggers) */
 +constexpr int BUTTONS[PARTS] = {
 +	-1,
 +	SDL_GAMEPAD_BUTTON_SOUTH, SDL_GAMEPAD_BUTTON_EAST, SDL_GAMEPAD_BUTTON_WEST, SDL_GAMEPAD_BUTTON_NORTH,
 +	SDL_GAMEPAD_BUTTON_LEFT_SHOULDER, SDL_GAMEPAD_BUTTON_RIGHT_SHOULDER, -1, -1,
-+	SDL_GAMEPAD_BUTTON_START, SDL_GAMEPAD_BUTTON_BACK, SDL_GAMEPAD_BUTTON_GUIDE,
++	SDL_GAMEPAD_BUTTON_START, SDL_GAMEPAD_BUTTON_BACK, SDL_GAMEPAD_BUTTON_GUIDE, -1,
 +};
++
++/* The panel of shortcuts (TOOLS): the keys of the hotkeys of Odin by
++ * default (hotkeys.cpp), which a phone has not. TEST and SERVICE, the
++ * switches of the cabinet, are held as long as the finger is, and leave the
++ * panel open to walk the test menus of the games; the others close it. */
++struct Shortcut {
++	const char *label;
++	const char *hint;
++	SDL_Keycode key;
++	SDL_Keymod mod;
++	bool stays;
++};
++
++constexpr Shortcut SHORTCUTS[] = {
++	{ "SAVE", "state", SDLK_F2, SDL_KMOD_NONE, false },
++	{ "LOAD", "state", SDLK_F4, SDL_KMOD_NONE, false },
++	{ "PAUSE", "on / off", SDLK_P, SDL_KMOD_NONE, false },
++	{ "RESET", "cabinet", SDLK_R, SDL_KMOD_LCTRL, false },
++	{ "TEST", "cabinet", SDLK_0, SDL_KMOD_NONE, true },
++	{ "SERVICE", "cabinet", SDLK_9, SDL_KMOD_NONE, true },
++	{ "CARD", "in / out", SDLK_F6, SDL_KMOD_NONE, false },
++	{ "CLOSE", "this panel", SDLK_UNKNOWN, SDL_KMOD_NONE, false },
++};
++constexpr int SHORTCUT_COLUMNS = 4;
++constexpr int SHORTCUT_COUNT = static_cast<int>(sizeof(SHORTCUTS) / sizeof(SHORTCUTS[0]));
 +
 +/* The buttons of the virtual gamepad, in the order SDL numbers them */
 +constexpr SDL_GamepadButton MASK_BUTTONS[] = {
@@ -1042,8 +1070,16 @@ index 0000000..eb8739d
 +
 +struct Finger {
 +	SDL_FingerID id = 0;
-+	Part part = NOTHING;
++	int part = NOTHING;	/* a Part, or PANEL_KEY */
 +	float x = 0, y = 0;	/* points */
++	int shortcut = -1;	/* on PANEL_KEY: its SHORTCUTS */
++};
++
++/* A key to send to Odin, from its own thread (touch_pad_draw) */
++struct KeySent {
++	SDL_Keycode key;
++	SDL_Keymod mod;
++	bool down;
 +};
 +
 +/* Shared between the thread that sends the touches (Android's) and the one
@@ -1052,6 +1088,11 @@ index 0000000..eb8739d
 +	std::mutex mutex;
 +	std::array<Finger, 10> fingers{};
 +	std::array<Shape, PARTS> shapes{};
++	/* The panel of shortcuts: open or not, its box and its keys */
++	bool panel = false;
++	Shape panel_box;
++	std::array<Shape, SHORTCUT_COUNT> panel_keys{};
++	std::vector<KeySent> keys_to_send;
 +	float room_w = 0, room_h = 0;	/* the window, in points, when drawn */
 +	SDL_JoystickID id = 0;
 +	int users = 0;	/* the Controls that plugged it */
@@ -1101,7 +1142,53 @@ index 0000000..eb8739d
 +
 +	s[COIN] = { w * 0.5f - sw * 0.65f, h - 0.07f * u, sw, sh };
 +	s[START] = { w * 0.5f + sw * 0.65f, h - 0.07f * u, sw, sh };
-+	s[MENU] = { w * 0.5f, 0.06f * u, sw, sh };
++	/* MENU and the shortcuts at the top, as COIN and START at the bottom */
++	s[MENU] = { w * 0.5f - sw * 0.65f, 0.06f * u, sw, sh };
++	s[TOOLS] = { w * 0.5f + sw * 0.65f, 0.06f * u, sw, sh };
++}
++
++/* The panel of shortcuts in the middle of the window, its keys in rows of
++ * SHORTCUT_COLUMNS */
++void
++lay_out_panel(Shape &box, std::array<Shape, SHORTCUT_COUNT> &keys, float w, float h)
++{
++	const float u = std::min(w, h);
++	const int rows = (SHORTCUT_COUNT + SHORTCUT_COLUMNS - 1) / SHORTCUT_COLUMNS;
++	const float key_w = std::min(0.30f * u, (w * 0.86f) / SHORTCUT_COLUMNS), key_h = 0.17f * u;
++	const float gap = 0.035f * u, title = 0.11f * u, pad = 0.05f * u;
++	const float bw = SHORTCUT_COLUMNS * key_w + (SHORTCUT_COLUMNS - 1) * gap + 2.0f * pad;
++	const float bh = title + rows * key_h + (rows - 1) * gap + 2.0f * pad;
++
++	box = { w * 0.5f, h * 0.5f, bw, bh };
++	for (int k = 0; k < SHORTCUT_COUNT; k++) {
++		const int row = k / SHORTCUT_COLUMNS, column = k % SHORTCUT_COLUMNS;
++
++		keys[static_cast<size_t>(k)] = { box.x - bw * 0.5f + pad + key_w * 0.5f + static_cast<float>(column) * (key_w + gap),
++			                         box.y - bh * 0.5f + pad + title + key_h * 0.5f + static_cast<float>(row) * (key_h + gap),
++			                         key_w, key_h };
++	}
++}
++
++int
++shortcut_at(float x, float y)
++{
++	for (int k = 0; k < SHORTCUT_COUNT; k++)
++		if (g_state.panel_keys[static_cast<size_t>(k)].hit(x, y, 1.0f))
++			return k;
++	return -1;
++}
++
++/* A shortcut pressed or let go: its key sent, the panel closed after one
++ * that does not stay */
++void
++press_shortcut(int k, bool down)
++{
++	const Shortcut &shortcut = SHORTCUTS[k];
++
++	if (shortcut.key != SDLK_UNKNOWN)
++		g_state.keys_to_send.push_back({ shortcut.key, shortcut.mod, down });
++	if (!down && !shortcut.stays)
++		g_state.panel = false;
 +}
 +
 +/* The part under a point; the stick reaches further than it is drawn */
@@ -1151,15 +1238,40 @@ index 0000000..eb8739d
 +		Finger *f = finger_of(event->tfinger.fingerID);
 +
 +		if (event->type == SDL_EVENT_FINGER_DOWN) {
-+			const Part part = shown() ? part_at(g_state.shapes, x, y) : NOTHING;
++			if (!shown() || f)
++				return true;
 +
-+			if (part == NOTHING || f)
++			Part part = part_at(g_state.shapes, x, y);
++			int shortcut = -1;
++
++			/* The panel open: its keys, TOOLS that closes it; a touch
++			 * anywhere else closes it too */
++			if (g_state.panel && part != TOOLS) {
++				shortcut = shortcut_at(x, y);
++				if (shortcut < 0) {
++					if (!g_state.panel_box.hit(x, y, 1.0f))
++						g_state.panel = false;
++					return true;
++				}
++			}
++			if (part == TOOLS) {
++				g_state.panel = !g_state.panel;
++				return true;
++			}
++			if (part == NOTHING && shortcut < 0)
 +				return true;
 +			for (Finger &free : g_state.fingers)
 +				if (free.part == NOTHING) {
-+					free = { event->tfinger.fingerID, part, x, y };
++					free = { event->tfinger.fingerID, shortcut >= 0 ? PANEL_KEY : part, x, y, shortcut };
++					if (shortcut >= 0)
++						press_shortcut(shortcut, true);
 +					break;
 +				}
++		} else if (f && f->part == PANEL_KEY) {
++			if (event->type != SDL_EVENT_FINGER_MOTION) {
++				press_shortcut(f->shortcut, false);
++				f->part = NOTHING;
++			}
 +		} else if (f && event->type == SDL_EVENT_FINGER_MOTION) {
 +			f->x = x;
 +			f->y = y;
@@ -1184,8 +1296,9 @@ index 0000000..eb8739d
 +
 +		const std::lock_guard<std::mutex> lock(g_state.mutex);
 +
++		/* The panel open, every touch is its */
 +		if (event->type == SDL_EVENT_MOUSE_BUTTON_DOWN)
-+			g_state.mouse_taken = shown() && part_at(g_state.shapes, event->button.x, event->button.y) != NOTHING;
++			g_state.mouse_taken = shown() && (g_state.panel || part_at(g_state.shapes, event->button.x, event->button.y) != NOTHING);
 +		const bool taken = g_state.mouse_taken;
 +		if (event->type == SDL_EVENT_MOUSE_BUTTON_UP)
 +			g_state.mouse_taken = false;
@@ -1214,9 +1327,14 @@ index 0000000..eb8739d
 +			if (f.part == NOTHING)
 +				continue;
 +			if (!on) {
++				/* A shortcut held as the pad goes: let go */
++				if (f.part == PANEL_KEY)
++					press_shortcut(f.shortcut, false);
 +				f.part = NOTHING;
 +				continue;
 +			}
++			if (f.part == PANEL_KEY)
++				continue;
 +			if (f.part == STICK) {
 +				const Shape &s = g_state.shapes[STICK];
 +				float dx = (f.x - s.x) / s.w, dy = (f.y - s.y) / s.w;
@@ -1232,7 +1350,7 @@ index 0000000..eb8739d
 +				trigger_l = true;
 +			} else if (f.part == TRIGGER_R) {
 +				trigger_r = true;
-+			} else if (BUTTONS[f.part] >= 0) {
++			} else if (f.part < PARTS && BUTTONS[f.part] >= 0) {
 +				buttons[static_cast<size_t>(BUTTONS[f.part])] = true;
 +			}
 +		}
@@ -1352,6 +1470,11 @@ index 0000000..eb8739d
 +	const ImVec2 room = ImGui::GetIO().DisplaySize;
 +	std::array<Shape, PARTS> shapes;
 +	std::array<bool, PARTS> held{};
++	std::array<Shape, SHORTCUT_COUNT> panel_keys;
++	std::array<bool, SHORTCUT_COUNT> panel_held{};
++	std::vector<KeySent> keys;
++	Shape panel_box;
++	bool panel;
 +	ImVec2 knob;
 +	bool connected;
 +	{
@@ -1360,12 +1483,21 @@ index 0000000..eb8739d
 +		g_state.room_w = room.x;
 +		g_state.room_h = room.y;
 +		lay_out(g_state.shapes, room.x, room.y);
++		lay_out_panel(g_state.panel_box, g_state.panel_keys, room.x, room.y);
 +		shapes = g_state.shapes;
++		panel = g_state.panel;
++		panel_box = g_state.panel_box;
++		panel_keys = g_state.panel_keys;
++		keys.swap(g_state.keys_to_send);
 +		connected = g_state.id != 0;
 +		knob = { shapes[STICK].x, shapes[STICK].y };
 +		for (const Finger &f : g_state.fingers) {
 +			if (f.part == NOTHING)
 +				continue;
++			if (f.part == PANEL_KEY) {
++				panel_held[static_cast<size_t>(f.shortcut)] = true;
++				continue;
++			}
 +			held[static_cast<size_t>(f.part)] = true;
 +			if (f.part == STICK) {
 +				const Shape &s = shapes[STICK];
@@ -1379,6 +1511,20 @@ index 0000000..eb8739d
 +				knob = { s.x + dx, s.y + dy };
 +			}
 +		}
++	}
++	/* The keys of the shortcuts, as a keyboard would send them */
++	for (const KeySent &k : keys) {
++		SDL_Event event{};
++		SDL_Window *const window = SDL_GetKeyboardFocus();
++
++		event.type = k.down ? SDL_EVENT_KEY_DOWN : SDL_EVENT_KEY_UP;
++		event.key.timestamp = SDL_GetTicksNS();
++		event.key.windowID = window ? SDL_GetWindowID(window) : 0;
++		event.key.key = k.key;
++		event.key.scancode = SDL_GetScancodeFromKey(k.key, nullptr);
++		event.key.mod = k.mod;
++		event.key.down = k.down;
++		SDL_PushEvent(&event);
 +	}
 +	if (!connected)
 +		return;
@@ -1425,9 +1571,46 @@ index 0000000..eb8739d
 +			draw->AddRect(a, b, line, s.h * 0.35f, 0, thick);
 +			size = s.h * 0.55f;
 +		}
++		if (p == TOOLS) {
++			/* Three dots: more */
++			const float dot = s.h * 0.075f;
++
++			for (int d = -1; d <= 1; d++)
++				draw->AddCircleFilled({ s.x + static_cast<float>(d) * dot * 4.0f, s.y }, dot, text, 12);
++			continue;
++		}
 +		const ImVec2 extent = font->CalcTextSizeA(size, 1e9f, 0.0f, LABELS[p]);
 +
 +		draw->AddText(font, size, { s.x - extent.x * 0.5f, s.y - extent.y * 0.5f }, text, LABELS[p]);
++	}
++	if (!panel)
++		return;
++
++	/* The panel of shortcuts, over a veil on the game */
++	const float u = std::min(room.x, room.y);
++	const ImVec2 a{ panel_box.x - panel_box.w * 0.5f, panel_box.y - panel_box.h * 0.5f };
++	const ImVec2 b{ panel_box.x + panel_box.w * 0.5f, panel_box.y + panel_box.h * 0.5f };
++	const float title = 0.045f * u, label = 0.05f * u, hint = 0.032f * u;
++	const ImU32 accent = IM_COL32(110, 200, 210, 230), faint = IM_COL32(255, 255, 255, 120);
++
++	draw->AddRectFilled({ 0, 0 }, room, IM_COL32(0, 0, 0, 110));
++	draw->AddRectFilled(a, b, IM_COL32(24, 26, 30, 235), 0.04f * u);
++	draw->AddRect(a, b, line, 0.04f * u, 0, thick);
++	draw->AddText(font, title, { a.x + 0.05f * u, a.y + 0.04f * u }, accent, "SHORTCUTS");
++	for (int k = 0; k < SHORTCUT_COUNT; k++) {
++		const Shape &s = panel_keys[static_cast<size_t>(k)];
++		const ImVec2 ka{ s.x - s.w * 0.5f, s.y - s.h * 0.5f }, kb{ s.x + s.w * 0.5f, s.y + s.h * 0.5f };
++		const bool cabinet = SHORTCUTS[k].stays;
++
++		draw->AddRectFilled(ka, kb, panel_held[static_cast<size_t>(k)] ? pressed : fill, s.h * 0.25f);
++		draw->AddRect(ka, kb, cabinet ? accent : line, s.h * 0.25f, 0, thick);
++
++		const ImVec2 big = font->CalcTextSizeA(label, 1e9f, 0.0f, SHORTCUTS[k].label);
++		const ImVec2 small = font->CalcTextSizeA(hint, 1e9f, 0.0f, SHORTCUTS[k].hint);
++		const float top = s.y - (big.y + small.y * 1.1f) * 0.5f;
++
++		draw->AddText(font, label, { s.x - big.x * 0.5f, top }, text, SHORTCUTS[k].label);
++		draw->AddText(font, hint, { s.x - small.x * 0.5f, top + big.y * 1.1f }, faint, SHORTCUTS[k].hint);
 +	}
 +}
 +

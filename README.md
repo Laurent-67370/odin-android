@@ -48,6 +48,11 @@ par seconde** en course : la carte graphique travaille environ 9 ms sur les
   | LB / RB | UP / DOWN |
   | X / B | LEFT / RIGHT (les deux boutons de la borne) |
   | LT / RT | ROLL : incliner la planche à gauche / à droite |
+- **Raccourcis** : le bouton **•••** (à droite de MENU) ouvre un panneau de gros
+  boutons pour les touches qu'un téléphone n'a pas : SAVE / LOAD (l'état, F2 /
+  F4), PAUSE (P), RESET (Ctrl+R), **TEST** et **SERVICE** (0 / 9, les boutons de
+  service de la borne, tenus tant que le doigt reste : le panneau reste ouvert
+  pour parcourir les menus de test), CARD (F6). Toucher ailleurs le referme.
 - **Portrait ou paysage**, comme on tient le téléphone (le verrouillage de la
   rotation est respecté) : la manette se place autour de l'image dans les deux.
 - La touche **Retour** d'Android ouvre / ferme le menu (Échap).
