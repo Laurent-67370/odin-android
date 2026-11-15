@@ -2638,7 +2638,7 @@ index d6b727c..f2e748b 100644
  	const std::string home = env_text("HOME"), data = env_text("XDG_DATA_HOME");
  
 diff --git a/src/odin/host/video/display.cpp b/src/odin/host/video/display.cpp
-index f185cd7..230801a 100644
+index f185cd7..73a5337 100644
 --- a/src/odin/host/video/display.cpp
 +++ b/src/odin/host/video/display.cpp
 @@ -26,6 +26,7 @@
@@ -2649,7 +2649,20 @@ index f185cd7..230801a 100644
  
  #include <algorithm>
  #include <atomic>
-@@ -689,7 +690,8 @@ Display::build_bar(BarState *bar)
+@@ -179,6 +180,12 @@ set_icon(SDL_Window *window)
+ SDL_Window *
+ make_window(uint64_t flags)
+ {
++#if defined(__ANDROID__)
++	/* A phone: the whole screen, which SDL keeps without the bars of the
++	 * system (immersive), the app back in front too; a window not on the
++	 * whole display has SDL show them (SDLActivity.setWindowStyle) */
++	flags |= SDL_WINDOW_FULLSCREEN;
++#endif
+ 	SDL_Window *const window = SDL_CreateWindow("Odin", Renderer::WIDTH, Renderer::HEIGHT, flags | SDL_WINDOW_RESIZABLE);
+ 
+ 	if (!window) {
+@@ -689,7 +696,8 @@ Display::build_bar(BarState *bar)
  		m_menu->build_bar(*bar);
  		return true;
  	}
@@ -2659,7 +2672,7 @@ index f185cd7..230801a 100644
  		return false;
  	make_menu();
  	m_menu->build_note(*bar);
-@@ -983,6 +985,7 @@ Display::show_speed()
+@@ -983,6 +991,7 @@ Display::show_speed()
  		                   static_cast<double>(now - m_title_since);
  
  		m_fps = static_cast<float>(fps);
@@ -2667,6 +2680,21 @@ index f185cd7..230801a 100644
  		if (!m_message.empty())
  			std::snprintf(title, sizeof(title), "%s (%4.1f FPS) [%s]", m_title.c_str(), fps, m_message.c_str());
  		else
+diff --git a/src/odin/host/video/display_window.cpp b/src/odin/host/video/display_window.cpp
+index 930cdc4..f5a6917 100644
+--- a/src/odin/host/video/display_window.cpp
++++ b/src/odin/host/video/display_window.cpp
+@@ -190,6 +190,10 @@ Display::display_size(unsigned &w, unsigned &h) const
+ void
+ Display::toggle_fullscreen()
+ {
++#if defined(__ANDROID__)
++	/* Always the whole screen on a phone (make_window) */
++	return;
++#endif
+ 	const bool on = fullscreen(), said = (SDL_GetWindowFlags(m_window) & SDL_WINDOW_FULLSCREEN) != 0;
+ 	unsigned w = 0, h = 0;
+ 
 diff --git a/src/odin/host/video/x11_window.cpp b/src/odin/host/video/x11_window.cpp
 index 42a24db..d7fcd6d 100644
 --- a/src/odin/host/video/x11_window.cpp
