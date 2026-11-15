@@ -1,5 +1,5 @@
 diff --git a/CMakeLists.txt b/CMakeLists.txt
-index e034434..9c3f9c3 100644
+index e034434..23aa3bd 100644
 --- a/CMakeLists.txt
 +++ b/CMakeLists.txt
 @@ -16,6 +16,12 @@ include(GNUInstallDirs)
@@ -72,7 +72,7 @@ index e034434..9c3f9c3 100644
 +# their corners (mesh.vert, VERTEX_DEPTH), not written by each fragment
 +set(GLSL_EXTRA "")
 +if(ANDROID)
-+	set(GLSL_EXTRA "echo '#define VERTEX_DEPTH 1'; echo '#define UNIFORM_LISTS 1'; ")
++	set(GLSL_EXTRA "echo '#define VERTEX_DEPTH 1'; ")
 +endif()
  set(GLSL ${CMAKE_SOURCE_DIR}/src/odin/host/gfx/glsl)
  set(SPIRV_DIR ${CMAKE_BINARY_DIR}/spirv)
@@ -365,76 +365,10 @@ index ddbdf32..5a222d1 100644
  		return buffers > 0 && primitive_ids() && (es_version() >= 32 || has_extension("GL_OES_shader_image_atomic"));
  	}();
 diff --git a/src/odin/host/gfx/glsl/mesh.frag b/src/odin/host/gfx/glsl/mesh.frag
-index bcae486..84a0ae9 100644
+index bcae486..5743a1f 100644
 --- a/src/odin/host/gfx/glsl/mesh.frag
 +++ b/src/odin/host/gfx/glsl/mesh.frag
-@@ -41,8 +41,19 @@ struct light_t {
- 	vec2 extents;
- 	vec3 spot;
- 	vec2 cone;
-+#ifdef VULKAN
-+	/* Four to a vec4: the same offsets in a uniform block (std140) and a
-+	 * storage one (std430), as LightData of scene_vk.cpp */
-+	vec4 table4[4];
-+#else
- 	float table[16];
-+#endif
- };
-+#ifdef VULKAN
-+#define LIGHT_TABLE(l, i) (l).table4[(i) >> 2][(i) & 3]
-+#else
-+#define LIGHT_TABLE(l, i) (l).table[i]
-+#endif
- 
- #ifndef FAMILIES
- #define FAMILIES 0
-@@ -83,12 +94,24 @@ struct view_t {
- struct lightset_t {
- 	light_t lights[4];
- };
-+#ifdef UNIFORM_LISTS
-+/* Uniform blocks: a phone's card keeps them near its shaders, which read
-+ * the lights of each fragment from them (scene_vk.cpp, make_mesh_layout) */
-+layout(std140, set = 0, binding = 0) uniform views_t {
-+	view_t u_views[8];
-+};
-+/* The lightset of the mesh alone, at the dynamic offset bound for it */
-+layout(std140, set = 0, binding = 2) uniform lightsets_t {
-+	lightset_t u_lightset_bound;
-+};
-+#else
- layout(std430, set = 0, binding = 0) readonly buffer views_t {
- 	view_t u_views[];
- };
- layout(std430, set = 0, binding = 2) readonly buffer lightsets_t {
- 	lightset_t u_lightsets[];
- };
-+#endif
- layout(set = 1, binding = 0) uniform texture2D u_texels;
- layout(set = 2, binding = 0) uniform sampler u_sampling;
- #if COLLECT != 0
-@@ -115,7 +138,11 @@ layout(push_constant) uniform mesh_t {
- 	float u_scale;
- 	float u_family;
- };
-+#ifdef UNIFORM_LISTS
-+#define u_lights u_lightset_bound.lights
-+#else
- #define u_lights u_lightsets[u_lightset].lights
-+#endif
- #define u_ambient u_views[u_view].ambient
- #define u_texture sampler2D (u_texels, u_sampling)
- #define u_fog (HAS_FOG != 0 ? u_views[u_view].fog : u_views[u_view].cue)
-@@ -268,7 +295,7 @@ apply_light (inout vec3 diffuse,
- 	if (type == 2) {
- 		float where = 15.0 * clamp ((dot (light_direction, normalize (-light.spot)) - light.cone.x) * light.cone.y, 0.0, 1.0);
- 		int point = min (int (where), 14);
--		attenuation *= (where > 0.0) ? mix (light.table[point], light.table[point + 1], where - float (point)) : 0.0;
-+		attenuation *= (where > 0.0) ? mix (LIGHT_TABLE (light, point), LIGHT_TABLE (light, point + 1), where - float (point)) : 0.0;
- 	}
- 
- 	n_dot_l = dot (normal, light_direction);
-@@ -345,8 +372,12 @@ main (void)
+@@ -345,8 +345,12 @@ main (void)
  	 * near planes the games send, the projected depth cannot tell apart
  	 * surfaces that the cabinets do (the shadow of the AIRTRIX combo
  	 * labels lies 0.06 behind them at a depth of 560). */
@@ -448,26 +382,10 @@ index bcae486..84a0ae9 100644
  #if FAMILIES != 0
  	/* In a view with both families of the 101 (depth_bias.hpp), a mesh is
 diff --git a/src/odin/host/gfx/glsl/mesh.vert b/src/odin/host/gfx/glsl/mesh.vert
-index ecbd545..05aaf27 100644
+index ecbd545..d9ed644 100644
 --- a/src/odin/host/gfx/glsl/mesh.vert
 +++ b/src/odin/host/gfx/glsl/mesh.vert
-@@ -38,9 +38,15 @@ struct view_t {
- 	vec3 fog_color;
- 	vec3 ambient;
- };
-+#ifdef UNIFORM_LISTS
-+layout(std140, set = 0, binding = 0) uniform views_t {
-+	view_t u_views[8];
-+};
-+#else
- layout(std430, set = 0, binding = 0) readonly buffer views_t {
- 	view_t u_views[];
- };
-+#endif
- layout(std430, set = 0, binding = 1) readonly buffer modelviews_t {
- 	mat4 u_modelviews[];
- };
-@@ -148,6 +154,13 @@ void main (void) {
+@@ -148,6 +148,13 @@ void main (void) {
  	}
  	/* The depth bias brings the whole position nearer: same pixel. */
  	gl_Position = mul (u_projection, vec4 (p_position.xyz * u_depth_scale, 1.0));
@@ -540,7 +458,7 @@ index f990e61..67362b2 100644
  }
  
 diff --git a/src/odin/host/gfx/vk_common.cpp b/src/odin/host/gfx/vk_common.cpp
-index 2431dbe..5a9a388 100644
+index 2431dbe..51651ce 100644
 --- a/src/odin/host/gfx/vk_common.cpp
 +++ b/src/odin/host/gfx/vk_common.cpp
 @@ -26,6 +26,7 @@
@@ -551,23 +469,7 @@ index 2431dbe..5a9a388 100644
  #include <cstdlib>
  #include <cstring>
  #include <optional>
-@@ -572,11 +573,12 @@ Context::make_frames()
- 
- 		/* The passes of a frame: a few dozen at most; the lists drawn,
- 		 * a few */
--		const VkDescriptorPoolSize sizes[4] = { { VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, 1024 },
-+		const VkDescriptorPoolSize sizes[5] = { { VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, 1024 },
- 			                                { VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, 512 },
- 			                                { VK_DESCRIPTOR_TYPE_STORAGE_IMAGE, 128 },
--			                                { VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER, 128 } };
--		const VkDescriptorPoolCreateInfo descriptors{ VK_STRUCTURE_TYPE_DESCRIPTOR_POOL_CREATE_INFO, nullptr, 0, 256, 4,
-+			                                { VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER, 512 },
-+			                                { VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER_DYNAMIC, 256 } };
-+		const VkDescriptorPoolCreateInfo descriptors{ VK_STRUCTURE_TYPE_DESCRIPTOR_POOL_CREATE_INFO, nullptr, 0, 256, 5,
- 		                                              sizes };
- 		check(m_fn.vkCreateDescriptorPool(m_device, &descriptors, nullptr, &frame.descriptors), "a descriptor pool");
- 	}
-@@ -900,7 +902,29 @@ Context::make_buffer(VkDeviceSize size, VkBufferUsageFlags usage)
+@@ -900,7 +901,29 @@ Context::make_buffer(VkDeviceSize size, VkBufferUsageFlags usage)
  	check(m_fn.vkCreateBuffer(m_device, &info, nullptr, &buffer.buffer), "a buffer");
  	m_fn.vkGetBufferMemoryRequirements(m_device, buffer.buffer, &needs);
  	const VkMemoryPropertyFlags seen = VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT;
@@ -1345,10 +1247,10 @@ index 91fa8e4..ffc1660 100644
  
  } /* namespace odin */
 diff --git a/src/odin/host/renderer/hikaru/vk/drawing_vk.hpp b/src/odin/host/renderer/hikaru/vk/drawing_vk.hpp
-index 2c8c5a7..33dc718 100644
+index 2c8c5a7..b258e55 100644
 --- a/src/odin/host/renderer/hikaru/vk/drawing_vk.hpp
 +++ b/src/odin/host/renderer/hikaru/vk/drawing_vk.hpp
-@@ -276,6 +276,16 @@ private:
+@@ -276,6 +276,12 @@ private:
  	SceneDebug m_debug{};
  	vk::Slice m_vertices{}, m_indices{}, m_views{}, m_lightsets{};
  	VkDescriptorSet m_list_set = VK_NULL_HANDLE;
@@ -1357,11 +1259,7 @@ index 2c8c5a7..33dc718 100644
 +	vk::Buffer m_on_card[vk::Context::FRAMES]{};
 +	VkDeviceSize m_on_card_used[vk::Context::FRAMES]{};
 +	unsigned m_on_card_frame = ~0u;
-+	vk::Slice to_card(const vk::Slice &from, VkDeviceSize size, VkDeviceSize align, VkDeviceSize room = 0,
-+	                  VkDeviceSize piece = 0, VkDeviceSize stride = 0);
-+	/* Android: the lightsets apart by this, the one bound (scene_vk.cpp) */
-+	VkDeviceSize m_ls_stride = 0;
-+	uint32_t m_bound_lightset = 0;
++	vk::Slice to_card(const vk::Slice &from, VkDeviceSize size, VkDeviceSize align);
  	uint32_t m_identity = 0;	/* the modelview of none */
  	std::vector<bool> m_view_written, m_lightset_written;
  	VkPipeline m_bound_pipeline = VK_NULL_HANDLE;
@@ -1380,7 +1278,7 @@ index a5b195c..a066dee 100644
  		m_card.destroy_image(*image);
  	for (vk::Pass *pass : { &m_blender, &m_compose, &m_presenter })
 diff --git a/src/odin/host/renderer/hikaru/vk/scene_vk.cpp b/src/odin/host/renderer/hikaru/vk/scene_vk.cpp
-index 81bdb45..11845c6 100644
+index 81bdb45..0ada786 100644
 --- a/src/odin/host/renderer/hikaru/vk/scene_vk.cpp
 +++ b/src/odin/host/renderer/hikaru/vk/scene_vk.cpp
 @@ -43,6 +43,7 @@
@@ -1391,52 +1289,7 @@ index 81bdb45..11845c6 100644
  #include <filesystem>
  
  namespace odin {
-@@ -66,16 +67,27 @@ struct LightData {
- 	float color[3], ambient;
- 	float extents[2], pad2[2];
- 	float spot[3], pad3;
--	float cone[2];
--	float table[16];
--	float pad4[2];
-+	float cone[2], pad4[2];
-+	float table[16];	/* vec4 table4[4] in glsl/mesh.frag */
- };
--static_assert(sizeof(LightData) == 160 && offsetof(LightData, table) == 88);
-+static_assert(sizeof(LightData) == 160 && offsetof(LightData, table) == 96);
- 
- struct LightsetData {
- 	LightData lights[4];
- };
- 
-+/* The views and the lightsets of a list: uniform blocks on Android (the
-+ * SPIR-V built with UNIFORM_LISTS, CMakeLists.txt), of their whole size in
-+ * glsl/mesh.*; storage buffers elsewhere */
-+#if defined(__ANDROID__)
-+constexpr VkDescriptorType VIEWS_TYPE = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER;
-+constexpr VkDescriptorType LIGHTSETS_TYPE = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER_DYNAMIC;
-+constexpr VkDeviceSize VIEWS_BLOCK = sizeof(ViewData) * ODIN_VIEWPORTS;
-+#else
-+constexpr VkDescriptorType VIEWS_TYPE = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER;
-+constexpr VkDescriptorType LIGHTSETS_TYPE = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER;
-+#endif
-+
- /* The constants of a variant, by their constant_id in glsl/mesh.* */
- struct Constants {
- 	int32_t gl_clip_space;
-@@ -238,10 +250,9 @@ VkDrawing::make_mesh_layout()
- 
- 	/* The views, the modelviews, the lightsets */
- 	const VkDescriptorSetLayoutBinding list[3] = {
--		{ 0, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, 1, VK_SHADER_STAGE_VERTEX_BIT | VK_SHADER_STAGE_FRAGMENT_BIT,
--		  nullptr },
-+		{ 0, VIEWS_TYPE, 1, VK_SHADER_STAGE_VERTEX_BIT | VK_SHADER_STAGE_FRAGMENT_BIT, nullptr },
- 		{ 1, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, 1, VK_SHADER_STAGE_VERTEX_BIT, nullptr },
--		{ 2, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, 1, VK_SHADER_STAGE_FRAGMENT_BIT, nullptr },
-+		{ 2, LIGHTSETS_TYPE, 1, VK_SHADER_STAGE_FRAGMENT_BIT, nullptr },
- 	};
- 	const VkDescriptorSetLayoutCreateInfo set{ VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_CREATE_INFO, nullptr, 0, 3,
- 	                                           list };
-@@ -513,6 +524,52 @@ VkDrawing::prepare_program(uint64_t key)
+@@ -513,6 +514,39 @@ VkDrawing::prepare_program(uint64_t key)
  	m_preparing = false;
  }
  
@@ -1445,8 +1298,7 @@ index 81bdb45..11845c6 100644
 + * which read it after a barrier); a larger buffer when it is full, the
 + * one before kept until the frames that used it are done */
 +vk::Slice
-+VkDrawing::to_card(const vk::Slice &from, VkDeviceSize size, VkDeviceSize align, VkDeviceSize room,
-+                   VkDeviceSize piece, VkDeviceSize stride)
++VkDrawing::to_card(const vk::Slice &from, VkDeviceSize size, VkDeviceSize align)
 +{
 +	const unsigned frame = m_card.frame();
 +	vk::Buffer &buffer = m_on_card[frame];
@@ -1457,30 +1309,18 @@ index 81bdb45..11845c6 100644
 +		used = 0;
 +	}
 +	VkDeviceSize at = (used + align - 1) / align * align;
-+	room = std::max(room, size);
-+	if (!buffer.buffer || at + room > buffer.size) {
++	if (!buffer.buffer || at + size > buffer.size) {
 +		if (buffer.buffer) {
 +			vk::Buffer old = buffer;
 +			m_card.later([&card = m_card, old]() mutable { card.destroy_buffer(old); });
 +		}
-+		buffer = m_card.make_card_buffer(std::max<VkDeviceSize>((at + room) * 2, VkDeviceSize{8} << 20),
++		buffer = m_card.make_card_buffer(std::max<VkDeviceSize>((at + size) * 2, VkDeviceSize{8} << 20),
 +		                                 VK_BUFFER_USAGE_TRANSFER_DST_BIT | VK_BUFFER_USAGE_VERTEX_BUFFER_BIT |
 +		                                         VK_BUFFER_USAGE_INDEX_BUFFER_BIT |
-+		                                         VK_BUFFER_USAGE_STORAGE_BUFFER_BIT |
-+		                                         VK_BUFFER_USAGE_UNIFORM_BUFFER_BIT);
++		                                         VK_BUFFER_USAGE_STORAGE_BUFFER_BIT);
 +		at = 0;
 +	}
-+	used = at + room;
-+	if (piece && stride != piece) {
-+		/* Pieces of `piece` bytes, `stride` apart in the copy */
-+		std::vector<VkBufferCopy> copies;
-+
-+		for (VkDeviceSize i = 0; i * piece < size; i++)
-+			copies.push_back({ from.offset + i * piece, at + i * stride, std::min(piece, size - i * piece) });
-+		m_fn.vkCmdCopyBuffer(m_card.commands(), from.buffer, buffer.buffer, static_cast<uint32_t>(copies.size()),
-+		                     copies.data());
-+		return { buffer.buffer, at, nullptr };
-+	}
++	used = at + size;
 +	const VkBufferCopy copy{ from.offset, at, size };
 +	m_fn.vkCmdCopyBuffer(m_card.commands(), from.buffer, buffer.buffer, 1, &copy);
 +	return { buffer.buffer, at, nullptr };
@@ -1489,7 +1329,7 @@ index 81bdb45..11845c6 100644
  /* The vertices and the indices of the list, its modelviews and the one of
   * none after them; room for its views and lightsets, written when first
   * used; the scene and its depth emptied, as scene_gl.cpp does: an
-@@ -545,14 +602,53 @@ VkDrawing::begin_scene(const odin_display_list_t &list, const SceneDebug &debug)
+@@ -545,10 +579,38 @@ VkDrawing::begin_scene(const odin_display_list_t &list, const SceneDebug &debug)
  	m_view_written.assign(list.num_vps, false);
  	m_lightset_written.assign(list.num_lss, false);
  
@@ -1512,42 +1352,26 @@ index 81bdb45..11845c6 100644
 +	m_vertices = to_card(m_vertices, vertex_bytes, 16);
 +	m_indices = to_card(m_indices, index_bytes, 16);
 +	modelviews = to_card(mvs, mv_bytes, align);
-+	const VkDeviceSize uniform_align = std::max<VkDeviceSize>(m_card.limits().minUniformBufferOffsetAlignment, 16);
-+	views = to_card(m_views, view_bytes, uniform_align, VIEWS_BLOCK);
-+	/* Each lightset at its own aligned place: the draws bind the one of
-+	 * their mesh by its dynamic offset */
-+	m_ls_stride = (sizeof(LightsetData) + uniform_align - 1) / uniform_align * uniform_align;
-+	lightsets = to_card(m_lightsets, ls_bytes, uniform_align, m_ls_stride * std::max<uint32_t>(list.num_lss, 1),
-+	                    sizeof(LightsetData), m_ls_stride);
++	views = to_card(m_views, view_bytes, align);
++	lightsets = to_card(m_lightsets, ls_bytes, align);
 +	m_card.memory_barrier(m_card.commands(), VK_PIPELINE_STAGE_2_ALL_TRANSFER_BIT, VK_ACCESS_2_TRANSFER_WRITE_BIT,
 +	                      VK_PIPELINE_STAGE_2_VERTEX_INPUT_BIT | VK_PIPELINE_STAGE_2_VERTEX_SHADER_BIT |
 +	                              VK_PIPELINE_STAGE_2_GEOMETRY_SHADER_BIT | VK_PIPELINE_STAGE_2_FRAGMENT_SHADER_BIT,
 +	                      VK_ACCESS_2_VERTEX_ATTRIBUTE_READ_BIT | VK_ACCESS_2_INDEX_READ_BIT |
-+	                              VK_ACCESS_2_SHADER_STORAGE_READ_BIT | VK_ACCESS_2_UNIFORM_READ_BIT);
++	                              VK_ACCESS_2_SHADER_STORAGE_READ_BIT);
 +#endif
 +
  	m_list_set = m_card.frame_set(m_list_layout);
 -	const VkDescriptorBufferInfo buffers[3] = { { m_views.buffer, m_views.offset, view_bytes },
 -		                                    { mvs.buffer, mvs.offset, mv_bytes },
 -		                                    { m_lightsets.buffer, m_lightsets.offset, ls_bytes } };
-+#if defined(__ANDROID__)
-+	const VkDeviceSize view_range = VIEWS_BLOCK, ls_range = sizeof(LightsetData);
-+#else
-+	const VkDeviceSize view_range = view_bytes, ls_range = ls_bytes;
-+#endif
-+	const VkDescriptorBufferInfo buffers[3] = { { views.buffer, views.offset, view_range },
++	const VkDescriptorBufferInfo buffers[3] = { { views.buffer, views.offset, view_bytes },
 +		                                    { modelviews.buffer, modelviews.offset, mv_bytes },
-+		                                    { lightsets.buffer, lightsets.offset, ls_range } };
++		                                    { lightsets.buffer, lightsets.offset, ls_bytes } };
  	VkWriteDescriptorSet writes[3];
  	for (uint32_t i = 0; i < 3; i++)
  		writes[i] = { VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET, nullptr, m_list_set, i, 0, 1,
--		              VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, nullptr, &buffers[i], nullptr };
-+		              i == 0 ? VIEWS_TYPE : i == 1 ? VK_DESCRIPTOR_TYPE_STORAGE_BUFFER : LIGHTSETS_TYPE, nullptr,
-+		              &buffers[i], nullptr };
- 	m_fn.vkUpdateDescriptorSets(m_card.device(), 3, writes, 0, nullptr);
- 
- 	m_collecting = false;
-@@ -601,6 +697,7 @@ VkDrawing::open_scene(bool clear, bool clear_depth)
+@@ -601,6 +663,7 @@ VkDrawing::open_scene(bool clear, bool clear_depth)
  	                                 nullptr };
  
  	m_fn.vkCmdBeginRendering(cb, &rendering);
@@ -1555,7 +1379,7 @@ index 81bdb45..11845c6 100644
  	set_scene_state(cb, m_collecting ? m_collect_set : VK_NULL_HANDLE);
  	m_family = NO_FAMILY;
  }
-@@ -636,6 +733,7 @@ VkDrawing::open_family(unsigned family)
+@@ -636,6 +699,7 @@ VkDrawing::open_family(unsigned family)
  	                                 nullptr };
  
  	m_fn.vkCmdBeginRendering(cb, &rendering);
@@ -1563,23 +1387,7 @@ index 81bdb45..11845c6 100644
  	set_scene_state(cb, m_family_set[family]);
  	m_family = family;
  }
-@@ -659,8 +757,15 @@ VkDrawing::set_scene_state(VkCommandBuffer cb, VkDescriptorSet set3)
- 	m_fn.vkCmdBindVertexBuffers(cb, 0, 1, &m_vertices.buffer, &m_vertices.offset);
- 	m_fn.vkCmdBindIndexBuffer(cb, m_indices.buffer, m_indices.offset, VK_INDEX_TYPE_UINT32);
- 	const VkDescriptorSet sets[4] = { m_list_set, m_none_set.set, m_nearest_set.set, set3 };
-+#if defined(__ANDROID__)
-+	const uint32_t lightset_at = 0;
-+	m_fn.vkCmdBindDescriptorSets(cb, VK_PIPELINE_BIND_POINT_GRAPHICS, m_mesh_layout, 0, set3 ? 4 : 3, sets, 1,
-+	                             &lightset_at);
-+	m_bound_lightset = 0;
-+#else
- 	m_fn.vkCmdBindDescriptorSets(cb, VK_PIPELINE_BIND_POINT_GRAPHICS, m_mesh_layout, 0, set3 ? 4 : 3, sets, 0,
- 	                             nullptr);
-+#endif
- 	m_bound_pipeline = VK_NULL_HANDLE;
- 	m_bound_texture = 0;
- 	m_bound_sampler = NONE;
-@@ -904,12 +1009,22 @@ VkDrawing::draw_mesh(const odin_mesh_t &mesh, const MeshDraw &draw)
+@@ -904,6 +968,7 @@ VkDrawing::draw_mesh(const odin_mesh_t &mesh, const MeshDraw &draw)
  	if (p != m_bound_pipeline) {
  		m_bound_pipeline = p;
  		m_fn.vkCmdBindPipeline(cb, VK_PIPELINE_BIND_POINT_GRAPHICS, p);
@@ -1587,22 +1395,7 @@ index 81bdb45..11845c6 100644
  	}
  	set_view(mesh);
  	if (variant.has_texture)
- 		bind_texture(draw);
- 	if (variant.has_lighting && !m_lightset_written[mesh.ls_index])
- 		write_lightset(mesh.ls_index);
-+#if defined(__ANDROID__)
-+	/* The lightset of the mesh, at its offset in the uniform block */
-+	if (variant.has_lighting && mesh.ls_index != m_bound_lightset) {
-+		const uint32_t at = static_cast<uint32_t>(m_ls_stride * mesh.ls_index);
-+
-+		m_fn.vkCmdBindDescriptorSets(cb, VK_PIPELINE_BIND_POINT_GRAPHICS, m_mesh_layout, 0, 1, &m_list_set, 1, &at);
-+		m_bound_lightset = mesh.ls_index;
-+	}
-+#endif
- 
- 	/* The 101 moves the mesh by a fraction of its own depth
- 	 * (scene_gl.cpp, depth_bias.hpp). */
-@@ -942,6 +1057,7 @@ VkDrawing::draw_mesh(const odin_mesh_t &mesh, const MeshDraw &draw)
+@@ -942,6 +1007,7 @@ VkDrawing::draw_mesh(const odin_mesh_t &mesh, const MeshDraw &draw)
  		m_fn.vkCmdPushConstants(cb, m_mesh_layout, VK_SHADER_STAGE_VERTEX_BIT | VK_SHADER_STAGE_FRAGMENT_BIT, 0,
  		                        sizeof(m_push), &m_push);
  		m_fn.vkCmdDrawIndexed(cb, mesh.num_tris * 3, 1, mesh.first_index, 0, 0);

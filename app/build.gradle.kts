@@ -14,7 +14,9 @@ android {
         applicationId = "org.odinport.android"
         minSdk = 26
         targetSdk = 35
-        versionCode = (System.getenv("GITHUB_RUN_NUMBER") ?: "1").toInt()
+        // Above the builds of Emberwake (its run numbers, up to ~50): Android
+        // installs over only a version of a higher code
+        versionCode = 1000 + (System.getenv("GITHUB_RUN_NUMBER") ?: "1").toInt()
         versionName = "0.1-" + (System.getenv("ODIN_COMMIT") ?: "dev").take(7)
 
         ndk { abiFilters += listOf("arm64-v8a") }
