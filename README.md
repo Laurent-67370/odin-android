@@ -7,6 +7,19 @@ Odin au commit de `odin.version`, applique `patches/0001-android.patch` et
 construit l'APK, publié dans la release **`odin-apk`** de ce dépôt :
 https://github.com/Laurent-67370/odin-android/releases/download/odin-apk/odin.apk
 
+## État
+
+| Point | État |
+|---|---|
+| Air Trix, NASCAR Arcade | jouables, **60 images/s** (Snapdragon 8 Gen 2) |
+| Manette tactile | stick flottant, boutons, gâchettes, vibration, panneau de raccourcis |
+| Portrait / paysage | les deux, bascule en jeu |
+| Quitter puis revenir dans l'app | le jeu reprend (pas d'écran noir) |
+| Mises à jour | par-dessus l'ancienne version (APK signé d'une clé fixe) |
+
+Connu, venant d'Odin lui-même : Air Trix peut planter à l'écran des meilleurs
+scores ([Tovarichtch/Odin#52](https://github.com/Tovarichtch/Odin/issues/52)).
+
 ## Installer
 
 1. Télécharger `odin.apk` depuis la release `odin-apk`, l'ouvrir sur le
@@ -64,6 +77,11 @@ par seconde** en course : la carte graphique travaille environ 9 ms sur les
   panneau.
 - **Portrait ou paysage**, comme on tient le téléphone (le verrouillage de la
   rotation est respecté) : la manette se place autour de l'image dans les deux.
+- **Plein écran** : les barres d'Android restent masquées (un balayage depuis le
+  bord les fait revenir un instant), aussi au retour dans l'application.
+- **Menus lisibles** : en paysage, la bibliothèque et le menu d'Odin sont
+  agrandis ×3 selon la densité de l'écran (en portrait, trop étroit, ils gardent
+  leur taille).
 - La touche **Retour** d'Android ouvre / ferme le menu (Échap).
 - Dans les menus, on touche les éléments comme avec une souris.
 
@@ -74,6 +92,11 @@ par seconde** en course : la carte graphique travaille environ 9 ms sur les
 - Dossiers : `ODIN_ANDROID_FOLDER` (dossier `Odin/`) et `ODIN_ANDROID_DATA`
   (données de l'APK) donnés par l'activité ; polices de `/system/fonts`.
 - Pas de X11 ni d'evdev ; sélecteurs de dossiers remplacés par `Odin/roms`.
+- Fenêtre en plein écran pour SDL (mode immersif) ; menu agrandi au facteur
+  entier de la densité de l'écran quand il garde 760×340 points.
+- Vulkan : nouvelle surface quand l'app revient au premier plan (Android lui
+  donne une nouvelle fenêtre) ; chaîne d'images refaite seulement quand la
+  fenêtre change de taille.
 - `touch_pad.cpp` : la manette tactile, une manette virtuelle SDL dessinée avec
   Dear ImGui (testable sur PC avec `ODIN_TOUCH_PAD=1`).
 - Vulkan par défaut, comme sur macOS ; le recompilateur ARM64 d'Odin (fait
