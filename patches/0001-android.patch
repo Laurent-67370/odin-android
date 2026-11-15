@@ -1,5 +1,5 @@
 diff --git a/CMakeLists.txt b/CMakeLists.txt
-index e034434..84dd582 100644
+index e034434..d3a8946 100644
 --- a/CMakeLists.txt
 +++ b/CMakeLists.txt
 @@ -16,6 +16,12 @@ include(GNUInstallDirs)
@@ -63,7 +63,7 @@ index e034434..84dd582 100644
  	host/app/version.cpp host/app/hotkeys.cpp host/input/controls.cpp
  	host/input/pointers.cpp host/input/wheel_force.cpp host/input/gun_serial.cpp
  	host/input/evdev.cpp host/input/rawinput.cpp
-@@ -312,7 +327,12 @@ set_source_files_properties(src/miniz/miniz.c PROPERTIES COMPILE_DEFINITIONS USE
+@@ -312,7 +327,15 @@ set_source_files_properties(src/miniz/miniz.c PROPERTIES COMPILE_DEFINITIONS USE
  set_source_files_properties(src/odin/host/app/zip_crc.cpp PROPERTIES
  	COMPILE_OPTIONS "-isystem;${CMAKE_SOURCE_DIR}/src/miniz")
  
@@ -71,47 +71,50 @@ index e034434..84dd582 100644
 +# Vulkan shaders to SPIR-V; on Android the depth of the meshes is taken at
 +# their corners (mesh.vert, VERTEX_DEPTH), not written by each fragment
 +set(GLSL_EXTRA "")
++set(GLSL_OPT "")
 +if(ANDROID)
 +	set(GLSL_EXTRA "echo '#define VERTEX_DEPTH 1'; echo '#define DRAW_TABLE 1'; ")
++	# Optimised SPIR-V: the drivers of phones optimise less than those of PCs
++	set(GLSL_OPT "-Os ")
 +endif()
  set(GLSL ${CMAKE_SOURCE_DIR}/src/odin/host/gfx/glsl)
  set(SPIRV_DIR ${CMAKE_BINARY_DIR}/spirv)
  file(MAKE_DIRECTORY ${SPIRV_DIR}/glsl)
-@@ -324,10 +344,10 @@ foreach(shader whole_picture.vert blend.frag compose.vert compose.frag present.f
+@@ -324,10 +347,10 @@ foreach(shader whole_picture.vert blend.frag compose.vert compose.frag present.f
  	string(REGEX REPLACE ".*\\." "" stage ${shader})
  	set(out ${SPIRV_DIR}/glsl/${shader}.spv)
  	if(shader STREQUAL "sort.frag")
 -		set(script "{ echo '#version 450'; echo '#define LISTS_SET 0'; cat \"$2\" \"$3\"; } | \"$0\" -V --stdin -S frag -o \"$1\"")
-+		set(script "{ echo '#version 450'; ${GLSL_EXTRA}echo '#define LISTS_SET 0'; cat \"$2\" \"$3\"; } | \"$0\" -V --stdin -S frag -o \"$1\"")
++		set(script "{ echo '#version 450'; ${GLSL_EXTRA}echo '#define LISTS_SET 0'; cat \"$2\" \"$3\"; } | \"$0\" -V ${GLSL_OPT}--stdin -S frag -o \"$1\"")
  		set(inputs ${GLSL}/fragment_lists.glsl ${GLSL}/${shader})
  	else()
 -		set(script "{ echo '#version 450'; cat \"$2\"; } | \"$0\" -V --stdin -S ${stage} -o \"$1\"")
-+		set(script "{ echo '#version 450'; ${GLSL_EXTRA}cat \"$2\"; } | \"$0\" -V --stdin -S ${stage} -o \"$1\"")
++		set(script "{ echo '#version 450'; ${GLSL_EXTRA}cat \"$2\"; } | \"$0\" -V ${GLSL_OPT}--stdin -S ${stage} -o \"$1\"")
  		set(inputs ${GLSL}/${shader})
  	endif()
  	add_custom_command(OUTPUT ${out}
-@@ -337,13 +357,13 @@ foreach(shader whole_picture.vert blend.frag compose.vert compose.frag present.f
+@@ -337,13 +360,13 @@ foreach(shader whole_picture.vert blend.frag compose.vert compose.frag present.f
  endforeach()
  set(out ${SPIRV_DIR}/glsl/mesh_collect.frag.spv)
  add_custom_command(OUTPUT ${out}
 -	COMMAND sh -c "{ echo '#version 450'; echo '#define COLLECT 1'; echo '#define LISTS_SET 3'; cat \"$2\" \"$3\"; } | \"$0\" -V --stdin -S frag -o \"$1\""
-+	COMMAND sh -c "{ echo '#version 450'; ${GLSL_EXTRA}echo '#define COLLECT 1'; echo '#define LISTS_SET 3'; cat \"$2\" \"$3\"; } | \"$0\" -V --stdin -S frag -o \"$1\""
++	COMMAND sh -c "{ echo '#version 450'; ${GLSL_EXTRA}echo '#define COLLECT 1'; echo '#define LISTS_SET 3'; cat \"$2\" \"$3\"; } | \"$0\" -V ${GLSL_OPT}--stdin -S frag -o \"$1\""
  		${GLSLANG} ${out} ${GLSL}/fragment_lists.glsl ${GLSL}/mesh.frag
  	DEPENDS ${GLSL}/fragment_lists.glsl ${GLSL}/mesh.frag VERBATIM)
  list(APPEND SPIRV ${out})
  set(out ${SPIRV_DIR}/glsl/pmx_native.frag.spv)
  add_custom_command(OUTPUT ${out}
 -	COMMAND sh -c "{ echo '#version 450'; echo '#define NATIVE 1'; cat \"$2\"; } | \"$0\" -V --stdin -S frag -o \"$1\""
-+	COMMAND sh -c "{ echo '#version 450'; ${GLSL_EXTRA}echo '#define NATIVE 1'; cat \"$2\"; } | \"$0\" -V --stdin -S frag -o \"$1\""
++	COMMAND sh -c "{ echo '#version 450'; ${GLSL_EXTRA}echo '#define NATIVE 1'; cat \"$2\"; } | \"$0\" -V ${GLSL_OPT}--stdin -S frag -o \"$1\""
  		${GLSLANG} ${out} ${GLSL}/pmx.frag
  	DEPENDS ${GLSL}/pmx.frag VERBATIM)
  list(APPEND SPIRV ${out})
-@@ -355,14 +375,14 @@ foreach(variant list native_list)
+@@ -355,14 +378,14 @@ foreach(variant list native_list)
  		set(defines "echo '#define NATIVE 1'; echo '#define LIST 1'")
  	endif()
  	add_custom_command(OUTPUT ${out}
 -		COMMAND sh -c "{ echo '#version 450'; ${defines}; cat \"$2\"; } | \"$0\" -V --stdin -S frag -o \"$1\""
-+		COMMAND sh -c "{ echo '#version 450'; ${GLSL_EXTRA}${defines}; cat \"$2\"; } | \"$0\" -V --stdin -S frag -o \"$1\""
++		COMMAND sh -c "{ echo '#version 450'; ${GLSL_EXTRA}${defines}; cat \"$2\"; } | \"$0\" -V ${GLSL_OPT}--stdin -S frag -o \"$1\""
  			${GLSLANG} ${out} ${GLSL}/pmx.frag
  		DEPENDS ${GLSL}/pmx.frag VERBATIM)
  	list(APPEND SPIRV ${out})
@@ -119,11 +122,11 @@ index e034434..84dd582 100644
  set(out ${SPIRV_DIR}/glsl/mesh_families.frag.spv)
  add_custom_command(OUTPUT ${out}
 -	COMMAND sh -c "{ echo '#version 450'; echo '#define FAMILIES 1'; cat \"$2\"; } | \"$0\" -V --stdin -S frag -o \"$1\""
-+	COMMAND sh -c "{ echo '#version 450'; ${GLSL_EXTRA}echo '#define FAMILIES 1'; cat \"$2\"; } | \"$0\" -V --stdin -S frag -o \"$1\""
++	COMMAND sh -c "{ echo '#version 450'; ${GLSL_EXTRA}echo '#define FAMILIES 1'; cat \"$2\"; } | \"$0\" -V ${GLSL_OPT}--stdin -S frag -o \"$1\""
  		${GLSLANG} ${out} ${GLSL}/mesh.frag
  	DEPENDS ${GLSL}/mesh.frag VERBATIM)
  list(APPEND SPIRV ${out})
-@@ -429,8 +449,16 @@ set_source_files_properties(src/odin/host/app/rom_files.cpp PROPERTIES
+@@ -429,8 +452,16 @@ set_source_files_properties(src/odin/host/app/rom_files.cpp PROPERTIES
  set_source_files_properties(src/odin/host/gfx/host_graphics_vk.cpp PROPERTIES
  	COMPILE_DEFINITIONS "${VULKAN_FLAGS}")
  
@@ -378,10 +381,20 @@ index ddbdf32..5a222d1 100644
  		return buffers > 0 && primitive_ids() && (es_version() >= 32 || has_extension("GL_OES_shader_image_atomic"));
  	}();
 diff --git a/src/odin/host/gfx/glsl/mesh.frag b/src/odin/host/gfx/glsl/mesh.frag
-index bcae486..0fb5f22 100644
+index bcae486..0e7cb6f 100644
 --- a/src/odin/host/gfx/glsl/mesh.frag
 +++ b/src/odin/host/gfx/glsl/mesh.frag
-@@ -105,6 +105,23 @@ layout(set = 3, binding = 4) uniform sampler2D u_eye;
+@@ -72,6 +72,9 @@ layout(constant_id = 18) const int HAS_FOG = 0;
+ layout(constant_id = 19) const int HAS_CUE = 0;
+ layout(constant_id = 20) const int HAS_PATTERN = 0;
+ layout(constant_id = 21) const int NATIVE_2D = 0;
++/* The alpha test, off in the opaque pass: no discard there, the depth
++ * tested before shading */
++layout(constant_id = 22) const int ALPHA_TEST = 1;
+ 
+ struct view_t {
+ 	mat4 projection;
+@@ -105,6 +108,23 @@ layout(set = 3, binding = 4) uniform sampler2D u_eye;
  #if COLLECT != 0
  layout(set = 3, binding = 5) uniform sampler2D u_flagged_eye;
  #endif
@@ -405,7 +418,7 @@ index bcae486..0fb5f22 100644
  layout(push_constant) uniform mesh_t {
  	uint u_view, u_mv, u_mv2, u_lightset;
  	float u_depth_scale, u_alpha_ref, u_weigh_by_alpha;
-@@ -115,6 +132,7 @@ layout(push_constant) uniform mesh_t {
+@@ -115,6 +135,7 @@ layout(push_constant) uniform mesh_t {
  	float u_scale;
  	float u_family;
  };
@@ -413,22 +426,94 @@ index bcae486..0fb5f22 100644
  #define u_lights u_lightsets[u_lightset].lights
  #define u_ambient u_views[u_view].ambient
  #define u_texture sampler2D (u_texels, u_sampling)
-@@ -293,6 +311,14 @@ main (void)
- 	vec3 base;
- 	float alpha;
- 	ivec2 pixel = ivec2 (gl_FragCoord.xy);
-+#if defined(DRAW_TABLE) && COLLECT == 0
-+	/* A measure (renderer_times.cpp): the fragments of one colour, to
-+	 * weigh their shading against the rest of a draw */
-+	if (p_draw_g.w > 0.5) {
-+		fragColor = vec4 (0.5, 0.5, 0.5, 1.0);
-+		return;
-+	}
-+#endif
+@@ -138,6 +159,7 @@ out vec4 fragColor;
+ #endif
  
- 	p_position = q_position;
- 	p_normal = q_normal;
-@@ -345,8 +371,12 @@ main (void)
+ #ifndef VULKAN
++#define ALPHA_TEST 1
+ uniform light_t		u_lights[4];
+ uniform vec3		u_ambient;
+ uniform sampler2D	u_texture;
+@@ -220,24 +242,26 @@ in_triangle (vec2 c)
+ void
+ apply_light (inout vec3 diffuse,
+              inout vec3 specular,
+-             in light_t light,
++             in int i,
+              in int type,
+              in int att_type)
+ {
++	/* The light read where it is, by its number: a copy of it, its table
++	 * indexed at run time, goes through the slow memory of a phone's card */
+ 	vec3 normal = normalize (p_normal);
+ 	vec3 light_direction;
+ 	float distance, attenuation, n_dot_l, r_dot_v;
+ 
+ 	if (type == 3) {
+-		diffuse += light.color;
++		diffuse += u_lights[i].color;
+ 		return;
+ 	}
+ 
+ 	if (type == 0) {
+-		distance = length (light.direction);
+-		light_direction = light.direction / distance;
++		distance = length (u_lights[i].direction);
++		light_direction = u_lights[i].direction / distance;
+ 	} else {
+-		vec3 delta = light.position - p_position.xyz;
++		vec3 delta = u_lights[i].position - p_position.xyz;
+ 		distance = length (delta);
+ 		light_direction = delta / distance;
+ 	}
+@@ -247,13 +271,13 @@ apply_light (inout vec3 diffuse,
+ 	 * 1 / d^2 (the far red light of the PHARRIER logo scene, which
+ 	 * leaves the asteroids grey on the cabinet). */
+ 	if (att_type == 0)
+-		attenuation = clamp (light.extents.x * (distance + light.extents.y), 0.0, 1.0);
++		attenuation = clamp (u_lights[i].extents.x * (distance + u_lights[i].extents.y), 0.0, 1.0);
+ 	else if (att_type == 1)
+-		attenuation = clamp (light.extents.x * (distance * distance + light.extents.y), 0.0, 1.0);
++		attenuation = clamp (u_lights[i].extents.x * (distance * distance + u_lights[i].extents.y), 0.0, 1.0);
+ 	else if (att_type == 2)
+-		attenuation = clamp (light.extents.x * (1.0 / distance + light.extents.y), 0.0, 1.0);
++		attenuation = clamp (u_lights[i].extents.x * (1.0 / distance + u_lights[i].extents.y), 0.0, 1.0);
+ 	else if (att_type == 3)
+-		attenuation = clamp (light.extents.x * (1.0 / (distance * distance) + light.extents.y), 0.0, 1.0);
++		attenuation = clamp (u_lights[i].extents.x * (1.0 / (distance * distance) + u_lights[i].extents.y), 0.0, 1.0);
+ 	else
+ 		attenuation = 1.0;
+ 
+@@ -266,16 +290,16 @@ apply_light (inout vec3 diffuse,
+ 	 * the last at the cone angle, and nothing is lit beyond the cutoff,
+ 	 * which the patent says is deleted. */
+ 	if (type == 2) {
+-		float where = 15.0 * clamp ((dot (light_direction, normalize (-light.spot)) - light.cone.x) * light.cone.y, 0.0, 1.0);
++		float where = 15.0 * clamp ((dot (light_direction, normalize (-u_lights[i].spot)) - u_lights[i].cone.x) * u_lights[i].cone.y, 0.0, 1.0);
+ 		int point = min (int (where), 14);
+-		attenuation *= (where > 0.0) ? mix (light.table[point], light.table[point + 1], where - float (point)) : 0.0;
++		attenuation *= (where > 0.0) ? mix (u_lights[i].table[point], u_lights[i].table[point + 1], where - float (point)) : 0.0;
+ 	}
+ 
+ 	n_dot_l = dot (normal, light_direction);
+ 	/* The ambient level of the 051 is a constant share of the colour,
+ 	 * cut by the distance and by the cone like the Lambert term
+ 	 * (HEURISTIC: the scale and the cuts are read from the cabinets). */
+-	diffuse += attenuation * (max (n_dot_l, 0.0) + light.ambient) * light.color;
++	diffuse += attenuation * (max (n_dot_l, 0.0) + u_lights[i].ambient) * u_lights[i].color;
+ 
+ 	/* The reflected ray against the view. The vo3d pixel shader takes
+ 	 * the Blinn half vector, whose lobe is about four times as wide for
+@@ -283,7 +307,7 @@ apply_light (inout vec3 diffuse,
+ 	 * front, which the cabinet shows plain blue. */
+ 	r_dot_v = dot (reflect (-light_direction, normal), -normalize (p_position.xyz));
+ 	if (n_dot_l > 0.0 && r_dot_v > 0.0)
+-		specular += attenuation * pow (r_dot_v, 255.0 * p_specular.a) * light.color;
++		specular += attenuation * pow (r_dot_v, 255.0 * p_specular.a) * u_lights[i].color;
+ }
+ 
+ void
+@@ -345,8 +369,12 @@ main (void)
  	 * near planes the games send, the projected depth cannot tell apart
  	 * surfaces that the cabinets do (the shadow of the AIRTRIX combo
  	 * labels lies 0.06 behind them at a depth of 560). */
@@ -441,6 +526,33 @@ index bcae486..0fb5f22 100644
  
  #if FAMILIES != 0
  	/* In a view with both families of the 101 (depth_bias.hpp), a mesh is
+@@ -415,13 +443,13 @@ main (void)
+ 		vec3 emission = (SHADING_MODE == 2) ? p_ambient : vec3 (0.0);
+ 
+ 		if (HAS_LIGHT0 != 0)
+-			apply_light (diffuse, specular, u_lights[0], LIGHT0_TYPE, LIGHT0_ATT_TYPE);
++			apply_light (diffuse, specular, 0, LIGHT0_TYPE, LIGHT0_ATT_TYPE);
+ 		if (HAS_LIGHT1 != 0)
+-			apply_light (diffuse, specular, u_lights[1], LIGHT1_TYPE, LIGHT1_ATT_TYPE);
++			apply_light (diffuse, specular, 1, LIGHT1_TYPE, LIGHT1_ATT_TYPE);
+ 		if (HAS_LIGHT2 != 0)
+-			apply_light (diffuse, specular, u_lights[2], LIGHT2_TYPE, LIGHT2_ATT_TYPE);
++			apply_light (diffuse, specular, 2, LIGHT2_TYPE, LIGHT2_ATT_TYPE);
+ 		if (HAS_LIGHT3 != 0)
+-			apply_light (diffuse, specular, u_lights[3], LIGHT3_TYPE, LIGHT3_ATT_TYPE);
++			apply_light (diffuse, specular, 3, LIGHT3_TYPE, LIGHT3_ATT_TYPE);
+ 
+ 		color = vec4 ((ambient + diffuse + emission) * base, alpha);
+ 		if (SHADING_MODE != 3) {
+@@ -432,7 +460,7 @@ main (void)
+ 	}
+ 
+ 	/* Alpha test of the render pass (X360 825B2408). */
+-	if (color.a <= u_alpha_ref)
++	if (ALPHA_TEST != 0 && color.a <= u_alpha_ref)
+ 		discard;
+ 
+ #if COLLECT != 0
 diff --git a/src/odin/host/gfx/glsl/mesh.geom b/src/odin/host/gfx/glsl/mesh.geom
 index ec9f236..80fcc81 100644
 --- a/src/odin/host/gfx/glsl/mesh.geom
@@ -1424,7 +1536,7 @@ index 1253845..eb1d710 100644
  
  GLuint
 diff --git a/src/odin/host/renderer/hikaru/renderer_times.cpp b/src/odin/host/renderer/hikaru/renderer_times.cpp
-index 91fa8e4..c6792d9 100644
+index 91fa8e4..515169e 100644
 --- a/src/odin/host/renderer/hikaru/renderer_times.cpp
 +++ b/src/odin/host/renderer/hikaru/renderer_times.cpp
 @@ -125,6 +125,23 @@ DrawTimes::end()
@@ -1436,7 +1548,7 @@ index 91fa8e4..c6792d9 100644
 +	if (m_drawn >= 300) {
 +		tell();
 +		/* Android: the next 300 frames the other way, to weigh the
-+		 * shading of the fragments against the rest in the same game */
++		 * alpha test in the opaque pass (early Z) in the same game */
 +		const bool plain = g_draw_counts.plain;
 +		g_draw_counts = {};
 +#if defined(__ANDROID__)
@@ -1457,7 +1569,7 @@ index 91fa8e4..c6792d9 100644
  	std::fprintf(stderr, "\n");
 +	const double frames = static_cast<double>(m_drawn);
 +	std::fprintf(stderr, "drawing:  [%s] a frame: %.1f calls of draws, %.1f scene renderings, %.1f family renderings, "
-+	             "%.1f pipelines bound, %.1f draws\n", g_draw_counts.plain ? "fragments of one colour" : "fragments shaded",
++	             "%.1f pipelines bound, %.1f draws\n", g_draw_counts.plain ? "alpha test always" : "alpha test when needed",
 +	             static_cast<double>(g_draw_counts.calls) / frames, static_cast<double>(g_draw_counts.scenes) / frames,
 +	             static_cast<double>(g_draw_counts.families) / frames,
 +	             static_cast<double>(g_draw_counts.pipelines) / frames,
@@ -1466,21 +1578,35 @@ index 91fa8e4..c6792d9 100644
  
  } /* namespace odin */
 diff --git a/src/odin/host/renderer/hikaru/vk/drawing_vk.hpp b/src/odin/host/renderer/hikaru/vk/drawing_vk.hpp
-index 2c8c5a7..801c683 100644
+index 2c8c5a7..11e84bd 100644
 --- a/src/odin/host/renderer/hikaru/vk/drawing_vk.hpp
 +++ b/src/odin/host/renderer/hikaru/vk/drawing_vk.hpp
 @@ -158,7 +158,10 @@ private:
  		uint32_t snap;
  		float scale;
  		float family;
-+		uint32_t plain;	/* Android: a measure, the fragments of one colour */
++		uint32_t plain;	/* unused (a measure before) */
  	};
 +	/* draw_t of glsl/mesh.vert (std430: 15 words) */
 +	static_assert(sizeof(MeshPush) == 60);
  
  	/* The number of the picture of the frame, as the window reads it;
  	 * the format of the pictures */
-@@ -276,6 +279,22 @@ private:
+@@ -198,9 +201,11 @@ private:
+ 	void close_scene();
+ 	void use_depth();
+ 	void log(const char *fmt, ...) const __attribute__((format(printf, 2, 3)));
+-	VkPipeline pipeline(const MeshVariant &variant, MeshBlend blend);
++	/* alpha_test: with the alpha test of the pass (always when collecting) */
++	VkPipeline pipeline(const MeshVariant &variant, MeshBlend blend, bool alpha_test);
+ 	/* The first time one is asked for: made, and kept by `index` */
+-	VkPipeline make_pipeline(const MeshVariant &variant, MeshBlend blend, uint64_t key, uint64_t index);
++	VkPipeline make_pipeline(const MeshVariant &variant, MeshBlend blend, uint64_t key, uint64_t index,
++	                         bool alpha_test);
+ 	void read_cache(const std::string &path);
+ 	void write_cache();
+ 	void write_view(unsigned index);
+@@ -276,6 +281,22 @@ private:
  	SceneDebug m_debug{};
  	vk::Slice m_vertices{}, m_indices{}, m_views{}, m_lightsets{};
  	VkDescriptorSet m_list_set = VK_NULL_HANDLE;
@@ -1518,7 +1644,7 @@ index a5b195c..a066dee 100644
  		m_card.destroy_image(*image);
  	for (vk::Pass *pass : { &m_blender, &m_compose, &m_presenter })
 diff --git a/src/odin/host/renderer/hikaru/vk/scene_vk.cpp b/src/odin/host/renderer/hikaru/vk/scene_vk.cpp
-index 81bdb45..c212142 100644
+index 81bdb45..21f0494 100644
 --- a/src/odin/host/renderer/hikaru/vk/scene_vk.cpp
 +++ b/src/odin/host/renderer/hikaru/vk/scene_vk.cpp
 @@ -43,6 +43,7 @@
@@ -1529,7 +1655,35 @@ index 81bdb45..c212142 100644
  #include <filesystem>
  
  namespace odin {
-@@ -237,14 +238,21 @@ VkDrawing::make_mesh_layout()
+@@ -82,8 +83,9 @@ struct Constants {
+ 	int32_t has_texture, has_lighting, shading_mode, alpha_mode, tex_mode;
+ 	int32_t has_light[4], light_type[4], light_att_type[4];
+ 	int32_t has_fog, has_cue, has_pattern, native_2d;
++	int32_t alpha_test;
+ };
+-constexpr uint32_t NUM_CONSTANTS = 22;
++constexpr uint32_t NUM_CONSTANTS = 23;
+ static_assert(sizeof(Constants) == NUM_CONSTANTS * sizeof(int32_t));
+ 
+ /* The blend factors of each MeshBlend, as scene_gl.cpp has them:
+@@ -118,7 +120,7 @@ cache_fits(const std::vector<uint8_t> &bytes, const VkPhysicalDeviceProperties &
+ 
+ /* The constants of a variant (Constants) */
+ Constants
+-constants_of(const MeshVariant &variant, bool gl_clip_space)
++constants_of(const MeshVariant &variant, bool gl_clip_space, bool alpha_test)
+ {
+ 	Constants c{};
+ 
+@@ -137,6 +139,7 @@ constants_of(const MeshVariant &variant, bool gl_clip_space)
+ 	c.has_cue = variant.has_cue;
+ 	c.has_pattern = variant.has_pattern;
+ 	c.native_2d = variant.native;
++	c.alpha_test = alpha_test;
+ 	return c;
+ }
+ 
+@@ -237,14 +240,21 @@ VkDrawing::make_mesh_layout()
  	const VkDevice device = m_card.device();
  
  	/* The views, the modelviews, the lightsets */
@@ -1554,7 +1708,41 @@ index 81bdb45..c212142 100644
  	m_card.check(m_fn.vkCreateDescriptorSetLayout(device, &set, nullptr, &m_list_layout), "the set of a list");
  	make_sets(m_texture_sets, VK_DESCRIPTOR_TYPE_SAMPLED_IMAGE, VK_SHADER_STAGE_FRAGMENT_BIT);
  	make_sets(m_sampler_sets, VK_DESCRIPTOR_TYPE_SAMPLER, VK_SHADER_STAGE_FRAGMENT_BIT);
-@@ -513,6 +521,39 @@ VkDrawing::prepare_program(uint64_t key)
+@@ -380,21 +390,23 @@ VkDrawing::write_cache()
+  * translucent fragments go to their lists, not to the colour: their blend
+  * is that of sort.frag, the pipeline is one whatever the blend. */
+ VkPipeline
+-VkDrawing::pipeline(const MeshVariant &variant, MeshBlend blend)
++VkDrawing::pipeline(const MeshVariant &variant, MeshBlend blend, bool alpha_test)
+ {
+ 	if (variant.collect)
+ 		blend = MeshBlend::REPLACE;
++	alpha_test = alpha_test || variant.collect;
+ 	const uint64_t key = variant.key();
+-	const uint64_t index = key * 8 + static_cast<unsigned>(blend);
++	const uint64_t index = key * 16 + (alpha_test ? 8 : 0) + static_cast<unsigned>(blend);
+ 	const auto found = m_pipelines.find(index);
+ 
+-	return found != m_pipelines.end() ? found->second : make_pipeline(variant, blend, key, index);
++	return found != m_pipelines.end() ? found->second : make_pipeline(variant, blend, key, index, alpha_test);
+ }
+ 
+ VkPipeline
+-VkDrawing::make_pipeline(const MeshVariant &variant, MeshBlend blend, uint64_t key, uint64_t index)
++VkDrawing::make_pipeline(const MeshVariant &variant, MeshBlend blend, uint64_t key, uint64_t index,
++                         bool alpha_test)
+ {
+-	const Constants c = constants_of(variant, m_card.gl_clip_space());
++	const Constants c = constants_of(variant, m_card.gl_clip_space(), alpha_test);
+ 	VkSpecializationMapEntry entries[NUM_CONSTANTS];
+ 	for (uint32_t i = 0; i < NUM_CONSTANTS; i++)
+ 		entries[i] = { i, i * static_cast<uint32_t>(sizeof(int32_t)), sizeof(int32_t) };
+@@ -509,10 +521,43 @@ VkDrawing::prepare_program(uint64_t key)
+ 	    m_variants.contains(key))
+ 		return;
+ 	m_preparing = true;
+-	pipeline(*variant, variant->has_cue ? MeshBlend::FADED : MeshBlend::REPLACE);
++	pipeline(*variant, variant->has_cue ? MeshBlend::FADED : MeshBlend::REPLACE, false);
  	m_preparing = false;
  }
  
@@ -1594,7 +1782,7 @@ index 81bdb45..c212142 100644
  /* The vertices and the indices of the list, its modelviews and the one of
   * none after them; room for its views and lightsets, written when first
   * used; the scene and its depth emptied, as scene_gl.cpp does: an
-@@ -545,15 +586,51 @@ VkDrawing::begin_scene(const odin_display_list_t &list, const SceneDebug &debug)
+@@ -545,15 +590,51 @@ VkDrawing::begin_scene(const odin_display_list_t &list, const SceneDebug &debug)
  	m_view_written.assign(list.num_vps, false);
  	m_lightset_written.assign(list.num_lss, false);
  
@@ -1655,7 +1843,7 @@ index 81bdb45..c212142 100644
  
  	m_collecting = false;
  	m_pass.depth_write = true;
-@@ -564,6 +641,79 @@ VkDrawing::begin_scene(const odin_display_list_t &list, const SceneDebug &debug)
+@@ -564,6 +645,79 @@ VkDrawing::begin_scene(const odin_display_list_t &list, const SceneDebug &debug)
  	open_scene(true);
  }
  
@@ -1735,7 +1923,7 @@ index 81bdb45..c212142 100644
  /* The scene drawn into, emptied first or as it was left: every state of the
   * meshes set again (the commands may have been sent since, see count_now) */
  void
-@@ -601,6 +751,7 @@ VkDrawing::open_scene(bool clear, bool clear_depth)
+@@ -601,6 +755,7 @@ VkDrawing::open_scene(bool clear, bool clear_depth)
  	                                 nullptr };
  
  	m_fn.vkCmdBeginRendering(cb, &rendering);
@@ -1743,7 +1931,7 @@ index 81bdb45..c212142 100644
  	set_scene_state(cb, m_collecting ? m_collect_set : VK_NULL_HANDLE);
  	m_family = NO_FAMILY;
  }
-@@ -636,6 +787,7 @@ VkDrawing::open_family(unsigned family)
+@@ -636,6 +791,7 @@ VkDrawing::open_family(unsigned family)
  	                                 nullptr };
  
  	m_fn.vkCmdBeginRendering(cb, &rendering);
@@ -1751,7 +1939,7 @@ index 81bdb45..c212142 100644
  	set_scene_state(cb, m_family_set[family]);
  	m_family = family;
  }
-@@ -673,6 +825,7 @@ VkDrawing::close_scene()
+@@ -673,6 +829,7 @@ VkDrawing::close_scene()
  {
  	if (!m_open)
  		return;
@@ -1759,7 +1947,7 @@ index 81bdb45..c212142 100644
  	m_fn.vkCmdEndRendering(m_card.commands());
  	m_open = false;
  	if (!m_depth_kept)
-@@ -698,6 +851,7 @@ VkDrawing::use_depth()
+@@ -698,6 +855,7 @@ VkDrawing::use_depth()
  
  	if (!m_depth_wanted)
  		return;
@@ -1767,7 +1955,7 @@ index 81bdb45..c212142 100644
  	/* MoltenVK clears the colour too with vkCmdClearAttachments */
  	if (!m_open || m_family != NO_FAMILY || m_card.portability_subset()) {
  		close_scene();
-@@ -756,8 +910,10 @@ VkDrawing::begin_pass(const PassRules &rules)
+@@ -756,8 +914,10 @@ VkDrawing::begin_pass(const PassRules &rules)
  	m_pass.alpha_ref = rules.alpha_ref;
  	m_pass.depth_bias = rules.depth_bias;
  	m_pass.depth_write = rules.depth_write;
@@ -1779,7 +1967,7 @@ index 81bdb45..c212142 100644
  }
  
  void
-@@ -833,6 +989,7 @@ VkDrawing::set_view(const odin_mesh_t &mesh)
+@@ -833,6 +993,7 @@ VkDrawing::set_view(const odin_mesh_t &mesh)
  	if (m_scissor_vp_index != mesh.vp_index) {
  		const auto [x, y, w, h] = clip_window(vp, m_scale);
  
@@ -1787,7 +1975,7 @@ index 81bdb45..c212142 100644
  		m_scissor_vp_index = mesh.vp_index;
  		if (w >= 0 && h >= 0) {
  			const int32_t x0 = std::max(x, 0), y0 = std::max(y, 0);
-@@ -860,6 +1017,7 @@ VkDrawing::bind_texture(const MeshDraw &draw)
+@@ -860,6 +1021,7 @@ VkDrawing::bind_texture(const MeshDraw &draw)
  		const VkDescriptorSet set = found != m_textures.end() ? found->second.set.set : m_none_set.set;
  
  		m_bound_texture = draw.texture.id;
@@ -1795,7 +1983,7 @@ index 81bdb45..c212142 100644
  		m_fn.vkCmdBindDescriptorSets(cb, VK_PIPELINE_BIND_POINT_GRAPHICS, m_mesh_layout, 1, 1, &set, 0, nullptr);
  	}
  	if (draw.texture.id && m_bound_sampler != draw.sampler.id) {
-@@ -867,6 +1025,7 @@ VkDrawing::bind_texture(const MeshDraw &draw)
+@@ -867,6 +1029,7 @@ VkDrawing::bind_texture(const MeshDraw &draw)
  		const VkDescriptorSet set = found != m_samplers.end() ? found->second.set.set : m_nearest_set.set;
  
  		m_bound_sampler = draw.sampler.id;
@@ -1803,9 +1991,16 @@ index 81bdb45..c212142 100644
  		m_fn.vkCmdBindDescriptorSets(cb, VK_PIPELINE_BIND_POINT_GRAPHICS, m_mesh_layout, 2, 1, &set, 0, nullptr);
  	}
  }
-@@ -902,8 +1061,10 @@ VkDrawing::draw_mesh(const odin_mesh_t &mesh, const MeshDraw &draw)
+@@ -900,10 +1063,16 @@ VkDrawing::draw_mesh(const odin_mesh_t &mesh, const MeshDraw &draw)
+ 	}
+ 
  	const VkCommandBuffer cb = m_card.commands();
- 	const VkPipeline p = pipeline(variant, draw.blend);
+-	const VkPipeline p = pipeline(variant, draw.blend);
++	/* The alpha test only in the passes whose reference can drop a
++	 * fragment: the opaque one has -1 (pass_rules), and a shader without
++	 * discard lets the card test the depth before shading (early Z). The
++	 * measure of renderer_times.cpp has it everywhere every other report. */
++	const VkPipeline p = pipeline(variant, draw.blend, m_pass.alpha_ref >= 0.0f || g_draw_counts.plain);
  	if (p != m_bound_pipeline) {
 +		flush_draws();
  		m_bound_pipeline = p;
@@ -1814,11 +2009,11 @@ index 81bdb45..c212142 100644
  	}
  	set_view(mesh);
  	if (variant.has_texture)
-@@ -934,14 +1095,26 @@ VkDrawing::draw_mesh(const odin_mesh_t &mesh, const MeshDraw &draw)
+@@ -934,14 +1103,26 @@ VkDrawing::draw_mesh(const odin_mesh_t &mesh, const MeshDraw &draw)
  		m_push.mv = mv;
  		m_push.mv2 = modelview2_of(*m_list, mesh, mv);
  		m_push.order = m_pass.order;
-+		m_push.plain = g_draw_counts.plain ? 1 : 0;
++		m_push.plain = 0;
  		if (variant.collect)
  			m_pass.order += mesh.num_tris;
  		if (m_debug.log)
