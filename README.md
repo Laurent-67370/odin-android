@@ -11,7 +11,7 @@ https://github.com/Laurent-67370/odin-android/releases/download/odin-apk/odin.ap
 
 | Point | État |
 |---|---|
-| Air Trix, NASCAR Arcade | jouables, **60 images/s** (Snapdragon 8 Gen 2) |
+| Air Trix, NASCAR Arcade | jouables, **60 images/s** (Snapdragon 8 Gen 2), aussi en résolution 2× |
 | Manette tactile | stick flottant, boutons, gâchettes, vibration, panneau de raccourcis |
 | Portrait / paysage | les deux, bascule en jeu |
 | Quitter puis revenir dans l'app | le jeu reprend (pas d'écran noir) |
@@ -42,6 +42,13 @@ Sur un Snapdragon 8 Gen 2 (Adreno 740), en Vulkan, Air Trix tourne à **60 image
 par seconde** en course : la carte graphique travaille environ 9 ms sur les
 16,7 ms d'une image.
 
+- **Résolution** : MENU → Display → 3D QUALITY → *Internal resolution*. La
+  3D est calculée en 640×480 (1×, la borne) ; en **2×** (1280×960, à peu près la
+  hauteur d'un écran de téléphone), l'image est bien plus fine et Air Trix tient
+  toujours 60 images/s sur ce téléphone. 3× et plus dépassent la finesse de
+  l'écran pour un coût bien plus grand. Dans la même rubrique, *Anisotropic
+  filtering* 4× (textures vues de biais) et *Upscaling mode* Snap 2D (scores et
+  chronos nets) coûtent peu.
 - Les shaders sont compilés au premier lancement d'un jeu (quelques secondes),
   puis relus depuis le cache au lancement suivant (0,1 s), sans à-coups en jeu.
 - Le compteur d'images s'affiche en haut à gauche ; `odin.log` (dossier `Odin/`)
