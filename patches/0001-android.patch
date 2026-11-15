@@ -145,6 +145,21 @@ index e034434..d3a8946 100644
  set_target_properties(odin PROPERTIES CXX_STANDARD 20 CXX_STANDARD_REQUIRED ON CXX_EXTENSIONS OFF
  	RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin)
  target_include_directories(odin PRIVATE src)
+diff --git a/odin-games.json b/odin-games.json
+index 93ce8f8..27c48a2 100644
+--- a/odin-games.json
++++ b/odin-games.json
+@@ -37,8 +37,8 @@
+ 			"mie_eeprom" : "42434f30010101001800040101010100121200000000000000000000060041495254524958300000000000000100010100000000000000000000000000007e4442434f30010101001800040101010100121200000000000000000000060041495254524958300000000000000100010100000000000000000000000000007e44",
+ 			"controls" : [
+ 				{ "name" : "START", "id" : "start", "switch" : "1P START", "role" : "start" },
+-				{ "name" : "LEFT", "id" : "left", "switch" : "1P PUSH1", "role" : "left", "keys" : [ "X" ] },
+-				{ "name" : "RIGHT", "id" : "right", "switch" : "1P PUSH2", "role" : "right", "keys" : [ "C" ] },
++				{ "name" : "LEFT", "id" : "left", "switch" : "1P PUSH1", "role" : "left", "keys" : [ "X" ], "pad" : [ "dpleft", "x" ] },
++				{ "name" : "RIGHT", "id" : "right", "switch" : "1P PUSH2", "role" : "right", "keys" : [ "C" ], "pad" : [ "dpright", "b" ] },
+ 				{ "name" : "UP", "id" : "up", "switch" : "1P UP", "role" : "button5", "keys" : [ "Up" ] },
+ 				{ "name" : "DOWN", "id" : "down", "switch" : "1P DOWN", "role" : "button6", "keys" : [ "Down" ] },
+ 				{ "name" : "YAW", "id" : "yaw", "analog" : 0, "low" : "left", "role" : "stick_x" },
 diff --git a/src/odin/host/app/main.cpp b/src/odin/host/app/main.cpp
 index 1a4e66f..2b25c2d 100644
 --- a/src/odin/host/app/main.cpp
@@ -827,6 +842,24 @@ index c29c57e..f986118 100644
  	bool m_host_query_reset = false;
  	uint32_t m_stamp_bits = 0;
  	bool m_validation = false;
+diff --git a/src/odin/host/input/bindings.cpp b/src/odin/host/input/bindings.cpp
+index ea40540..b11bff6 100644
+--- a/src/odin/host/input/bindings.cpp
++++ b/src/odin/host/input/bindings.cpp
+@@ -550,6 +550,13 @@ Bindings::keys_toward(Role role, unsigned player, bool positive)
+ 		if (const auto input = HostInput::parse(std::string("key:") + key))
+ 			out.push_back(*input);
+ 	}
++#if defined(__ANDROID__)
++	/* The touch pad has one stick: the second one of player 1 left and
++	 * right on its triggers (the ROLL of Air Trix) */
++	if (role == Role::STICK2_X && player == 0)
++		if (const auto input = HostInput::parse(positive ? "pad:righttrigger" : "pad:lefttrigger"))
++			out.push_back(*input);
++#endif
+ 	return out;
+ }
+ 
 diff --git a/src/odin/host/input/controls.cpp b/src/odin/host/input/controls.cpp
 index c4acd40..2f94263 100644
 --- a/src/odin/host/input/controls.cpp
