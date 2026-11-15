@@ -40,6 +40,12 @@ par seconde** en course : la carte graphique travaille environ 9 ms sur les
   (gâchettes, pédales), COIN, START et MENU (menu d'Odin). Elle se masque
   quand une vraie manette (Bluetooth / USB) est branchée. Les commandes de
   chaque jeu se règlent dans MENU → Controls.
+  - Les touchers arrivent au jeu dès qu'ils se produisent (Android ne les
+    regroupe plus jusqu'à l'image suivante de l'écran).
+  - Le **stick flotte** : son centre se place là où le pouce se pose, près du
+    cercle dessiné.
+  - Une **courte vibration** confirme chaque appui (à couper avec la variable
+    d'environnement `ODIN_NO_BUZZ`).
 - **Air Trix** sur la manette tactile :
 
   | Bouton | Commande de la borne |
