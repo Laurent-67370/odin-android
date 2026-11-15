@@ -671,7 +671,7 @@ index ecbd545..83d07f8 100644
  	if (GL_CLIP_SPACE == 0)
  		gl_Position.z = (gl_Position.z + gl_Position.w) * 0.5;
 diff --git a/src/odin/host/gfx/host_graphics_vk.cpp b/src/odin/host/gfx/host_graphics_vk.cpp
-index f990e61..80ba4d9 100644
+index f990e61..6eee57a 100644
 --- a/src/odin/host/gfx/host_graphics_vk.cpp
 +++ b/src/odin/host/gfx/host_graphics_vk.cpp
 @@ -32,6 +32,7 @@
@@ -717,59 +717,10 @@ index f990e61..80ba4d9 100644
  
  	m_fn.vkGetSwapchainImagesKHR(m_card->device(), m_swapchain, &count, nullptr);
  	m_chain.resize(count);
-@@ -312,6 +331,20 @@ VkGraphics::show_window()
- 	const VkCommandBuffer cb = m_card->commands();
- 	const VkSemaphore free = m_free[m_card->frame()];
- 	uint32_t index = 0;
-+#if defined(__ANDROID__)
-+	/* A measure: where showing a frame waits, told every 300 frames */
-+	static struct {
-+		uint64_t acquire, end, present, worst[3];
-+		unsigned frames;
-+	} waits;
-+	uint64_t at = SDL_GetTicksNS();
-+	const auto spent = [&](uint64_t &sum, uint64_t &worst) {
-+		const uint64_t now = SDL_GetTicksNS();
-+		sum += now - at;
-+		worst = std::max(worst, now - at);
-+		at = now;
-+	};
-+#endif
- 
- 	if (!m_swapchain ||
- 	    m_fn.vkAcquireNextImageKHR(m_card->device(), m_swapchain, UINT64_MAX, free, VK_NULL_HANDLE, &index) < 0) {
-@@ -320,6 +353,9 @@ VkGraphics::show_window()
- 		return;
- 	}
- 
-+#if defined(__ANDROID__)
-+	spent(waits.acquire, waits.worst[0]);
-+#endif
- 	vk::Image &window = m_card->window_image();
- 	if (!window.image)
- 		clear_window(m_extent.width, m_extent.height);
-@@ -336,13 +372,35 @@ VkGraphics::show_window()
- 	level_barrier(m_fn, cb, m_chain[index], 0, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, VK_IMAGE_LAYOUT_PRESENT_SRC_KHR,
- 	              VK_PIPELINE_STAGE_2_NONE, VK_ACCESS_2_NONE);
- 	m_card->end_frame({ free, m_drawn[index] });
-+#if defined(__ANDROID__)
-+	spent(waits.end, waits.worst[1]);
-+#endif
- 
+@@ -340,9 +359,17 @@ VkGraphics::show_window()
  	const VkPresentInfoKHR present{ VK_STRUCTURE_TYPE_PRESENT_INFO_KHR, nullptr, 1, &m_drawn[index], 1, &m_swapchain,
  	                                &index, nullptr };
  	const VkResult result = m_fn.vkQueuePresentKHR(m_card->queue(), &present);
-+#if defined(__ANDROID__)
-+	spent(waits.present, waits.worst[2]);
-+	if (++waits.frames >= 300) {
-+		const double n = 1e6 * waits.frames;
-+		const auto d = [](uint64_t v) { return static_cast<double>(v); };
-+		std::fprintf(stderr, "window: a frame in ms [worst]: image acquired %.2f [%.1f], frame ended %.2f [%.1f], "
-+		             "presented %.2f [%.1f]\n", d(waits.acquire) / n, d(waits.worst[0]) / 1e6, d(waits.end) / n,
-+		             d(waits.worst[1]) / 1e6, d(waits.present) / n, d(waits.worst[2]) / 1e6);
-+		waits = {};
-+	}
-+#endif
 +#if defined(__ANDROID__)
 +	/* Suboptimal there only says that Android turns the images itself (the
 +	 * identity above, the screen turned); a new size remakes the chain */
@@ -1457,7 +1408,7 @@ index 0000000..d8b10a4
 +
 +#endif /* ODIN_TOUCH_PAD_HPP */
 diff --git a/src/odin/host/renderer/hikaru/drawing.hpp b/src/odin/host/renderer/hikaru/drawing.hpp
-index 92dcbe5..61763fe 100644
+index 92dcbe5..d14cc25 100644
 --- a/src/odin/host/renderer/hikaru/drawing.hpp
 +++ b/src/odin/host/renderer/hikaru/drawing.hpp
 @@ -48,6 +48,16 @@
@@ -1470,7 +1421,7 @@ index 92dcbe5..61763fe 100644
 +struct DrawCounts {
 +	uint64_t scenes = 0, families = 0, pipelines = 0, draws = 0;
 +	uint64_t calls = 0;	/* the calls the draws went in (Android: runs of them) */
-+	bool plain = false;	/* Android: the fragments of one colour, a measure (renderer_times.cpp) */
++	bool plain = false;	/* unused (a measure before) */
 +};
 +inline DrawCounts g_draw_counts;
 +
@@ -1592,10 +1543,10 @@ index 1253845..eb1d710 100644
  
  GLuint
 diff --git a/src/odin/host/renderer/hikaru/renderer_times.cpp b/src/odin/host/renderer/hikaru/renderer_times.cpp
-index 91fa8e4..515169e 100644
+index 91fa8e4..2d7b422 100644
 --- a/src/odin/host/renderer/hikaru/renderer_times.cpp
 +++ b/src/odin/host/renderer/hikaru/renderer_times.cpp
-@@ -125,6 +125,23 @@ DrawTimes::end()
+@@ -125,6 +125,15 @@ DrawTimes::end()
  		m_sums[i].host_worst = std::max(m_sums[i].host_worst, host[i]);
  	}
  	m_drawn++;
@@ -1603,15 +1554,7 @@ index 91fa8e4..515169e 100644
 +	 * without being closed (the app of a phone left) */
 +	if (m_drawn >= 300) {
 +		tell();
-+		/* Android: the next 300 frames the other way, to weigh the
-+		 * alpha test in the opaque pass (early Z) in the same game */
-+		const bool plain = g_draw_counts.plain;
 +		g_draw_counts = {};
-+#if defined(__ANDROID__)
-+		g_draw_counts.plain = !plain;
-+#else
-+		(void)plain;
-+#endif
 +		m_sums = {};
 +		m_drawn = m_read = m_lists = m_fragments = 0;
 +		m_fragments_worst = 0;
@@ -1619,13 +1562,13 @@ index 91fa8e4..515169e 100644
  }
  
  /* The stamps of a frame, if the card has them all: the last one tells. A
-@@ -210,6 +227,13 @@ DrawTimes::tell() const
+@@ -210,6 +219,13 @@ DrawTimes::tell() const
  	if (m_stamps)
  		std::fprintf(stderr, "  %7.3f", ms(card, m_read));
  	std::fprintf(stderr, "\n");
 +	const double frames = static_cast<double>(m_drawn);
-+	std::fprintf(stderr, "drawing:  [%s] a frame: %.1f calls of draws, %.1f scene renderings, %.1f family renderings, "
-+	             "%.1f pipelines bound, %.1f draws\n", g_draw_counts.plain ? "alpha test always" : "alpha test when needed",
++	std::fprintf(stderr, "drawing:  a frame: %.1f calls of draws, %.1f scene renderings, %.1f family renderings, "
++	             "%.1f pipelines bound, %.1f draws\n",
 +	             static_cast<double>(g_draw_counts.calls) / frames, static_cast<double>(g_draw_counts.scenes) / frames,
 +	             static_cast<double>(g_draw_counts.families) / frames,
 +	             static_cast<double>(g_draw_counts.pipelines) / frames,
@@ -1634,10 +1577,21 @@ index 91fa8e4..515169e 100644
  
  } /* namespace odin */
 diff --git a/src/odin/host/renderer/hikaru/vk/drawing_vk.hpp b/src/odin/host/renderer/hikaru/vk/drawing_vk.hpp
-index 2c8c5a7..11e84bd 100644
+index 2c8c5a7..ef47e4f 100644
 --- a/src/odin/host/renderer/hikaru/vk/drawing_vk.hpp
 +++ b/src/odin/host/renderer/hikaru/vk/drawing_vk.hpp
-@@ -158,7 +158,10 @@ private:
+@@ -88,7 +88,9 @@ public:
+ 	bool holds_program(uint64_t key) const override { return m_variants.contains(key); }
+ 	void begin_preparing() override {}
+ 	void prepare_program(uint64_t key) override;
+-	void end_preparing() override {}
++	/* The cache written as soon as the programs are ready: on a phone the
++	 * app is killed, never closed (destroy_meshes) */
++	void end_preparing() override { write_cache(); }
+ 	unsigned programs_read_back() const override { return m_read_back; }
+ 	unsigned programs_compiled() const override { return m_compiled; }
+ 
+@@ -158,7 +160,10 @@ private:
  		uint32_t snap;
  		float scale;
  		float family;
@@ -1648,7 +1602,7 @@ index 2c8c5a7..11e84bd 100644
  
  	/* The number of the picture of the frame, as the window reads it;
  	 * the format of the pictures */
-@@ -198,9 +201,11 @@ private:
+@@ -198,9 +203,11 @@ private:
  	void close_scene();
  	void use_depth();
  	void log(const char *fmt, ...) const __attribute__((format(printf, 2, 3)));
@@ -1662,7 +1616,17 @@ index 2c8c5a7..11e84bd 100644
  	void read_cache(const std::string &path);
  	void write_cache();
  	void write_view(unsigned index);
-@@ -276,6 +281,22 @@ private:
+@@ -268,6 +275,9 @@ private:
+ 	/* The pipelines draw_pmx makes after prepare_pmx */
+ 	ProgramList m_pmx_list;
+ 	unsigned m_read_back = 0, m_compiled = 0;
++	/* The pipelines compiled when the cache was last written, and when */
++	unsigned m_compiled_kept = 0;
++	uint64_t m_kept_at = 0;
+ 	bool m_preparing = false;
+ 
+ 	/* The list being drawn: its buffers (the views and the lightsets
+@@ -276,6 +286,22 @@ private:
  	SceneDebug m_debug{};
  	vk::Slice m_vertices{}, m_indices{}, m_views{}, m_lightsets{};
  	VkDescriptorSet m_list_set = VK_NULL_HANDLE;
@@ -1700,10 +1664,18 @@ index a5b195c..a066dee 100644
  		m_card.destroy_image(*image);
  	for (vk::Pass *pass : { &m_blender, &m_compose, &m_presenter })
 diff --git a/src/odin/host/renderer/hikaru/vk/scene_vk.cpp b/src/odin/host/renderer/hikaru/vk/scene_vk.cpp
-index 81bdb45..21f0494 100644
+index 81bdb45..7e5c3cb 100644
 --- a/src/odin/host/renderer/hikaru/vk/scene_vk.cpp
 +++ b/src/odin/host/renderer/hikaru/vk/scene_vk.cpp
-@@ -43,6 +43,7 @@
+@@ -33,6 +33,7 @@
+ #include "odin/host/gfx/program_cache.hpp"
+ #include "odin/common/bytes.hpp"
+ #include "odin/common/repeats.hpp"
++#include "odin/common/host_clock.hpp"
+ #include "odin/host/gfx/spirv.hpp"
+ #include "odin/host/app/user_files.hpp"
+ 
+@@ -43,6 +44,7 @@
  #include <cstddef>
  #include <cstdio>
  #include <cstring>
@@ -1711,7 +1683,7 @@ index 81bdb45..21f0494 100644
  #include <filesystem>
  
  namespace odin {
-@@ -82,8 +83,9 @@ struct Constants {
+@@ -82,8 +84,9 @@ struct Constants {
  	int32_t has_texture, has_lighting, shading_mode, alpha_mode, tex_mode;
  	int32_t has_light[4], light_type[4], light_att_type[4];
  	int32_t has_fog, has_cue, has_pattern, native_2d;
@@ -1722,7 +1694,7 @@ index 81bdb45..21f0494 100644
  static_assert(sizeof(Constants) == NUM_CONSTANTS * sizeof(int32_t));
  
  /* The blend factors of each MeshBlend, as scene_gl.cpp has them:
-@@ -118,7 +120,7 @@ cache_fits(const std::vector<uint8_t> &bytes, const VkPhysicalDeviceProperties &
+@@ -118,7 +121,7 @@ cache_fits(const std::vector<uint8_t> &bytes, const VkPhysicalDeviceProperties &
  
  /* The constants of a variant (Constants) */
  Constants
@@ -1731,7 +1703,7 @@ index 81bdb45..21f0494 100644
  {
  	Constants c{};
  
-@@ -137,6 +139,7 @@ constants_of(const MeshVariant &variant, bool gl_clip_space)
+@@ -137,6 +140,7 @@ constants_of(const MeshVariant &variant, bool gl_clip_space)
  	c.has_cue = variant.has_cue;
  	c.has_pattern = variant.has_pattern;
  	c.native_2d = variant.native;
@@ -1739,7 +1711,7 @@ index 81bdb45..21f0494 100644
  	return c;
  }
  
-@@ -237,14 +240,21 @@ VkDrawing::make_mesh_layout()
+@@ -237,14 +241,21 @@ VkDrawing::make_mesh_layout()
  	const VkDevice device = m_card.device();
  
  	/* The views, the modelviews, the lightsets */
@@ -1764,7 +1736,19 @@ index 81bdb45..21f0494 100644
  	m_card.check(m_fn.vkCreateDescriptorSetLayout(device, &set, nullptr, &m_list_layout), "the set of a list");
  	make_sets(m_texture_sets, VK_DESCRIPTOR_TYPE_SAMPLED_IMAGE, VK_SHADER_STAGE_FRAGMENT_BIT);
  	make_sets(m_sampler_sets, VK_DESCRIPTOR_TYPE_SAMPLER, VK_SHADER_STAGE_FRAGMENT_BIT);
-@@ -380,21 +390,23 @@ VkDrawing::write_cache()
+@@ -353,8 +364,10 @@ VkDrawing::write_cache()
+ {
+ 	size_t size = 0;
+ 
+-	if (m_cache_path.empty() || m_compiled == 0)
++	if (m_cache_path.empty() || m_compiled == m_compiled_kept)
+ 		return;
++	m_compiled_kept = m_compiled;
++	m_kept_at = host_ns();
+ 	read_cache(m_cache_path);
+ 	if (m_fn.vkGetPipelineCacheData(m_card.device(), m_cache, &size, nullptr) != VK_SUCCESS || size == 0)
+ 		return;
+@@ -380,21 +393,23 @@ VkDrawing::write_cache()
   * translucent fragments go to their lists, not to the colour: their blend
   * is that of sort.frag, the pipeline is one whatever the blend. */
  VkPipeline
@@ -1793,12 +1777,17 @@ index 81bdb45..21f0494 100644
  	VkSpecializationMapEntry entries[NUM_CONSTANTS];
  	for (uint32_t i = 0; i < NUM_CONSTANTS; i++)
  		entries[i] = { i, i * static_cast<uint32_t>(sizeof(int32_t)), sizeof(int32_t) };
-@@ -509,10 +521,43 @@ VkDrawing::prepare_program(uint64_t key)
+@@ -509,10 +524,48 @@ VkDrawing::prepare_program(uint64_t key)
  	    m_variants.contains(key))
  		return;
  	m_preparing = true;
 -	pipeline(*variant, variant->has_cue ? MeshBlend::FADED : MeshBlend::REPLACE);
-+	pipeline(*variant, variant->has_cue ? MeshBlend::FADED : MeshBlend::REPLACE, false);
++	const MeshBlend blend = variant->has_cue ? MeshBlend::FADED : MeshBlend::REPLACE;
++	pipeline(*variant, blend, false);
++	/* The same with the alpha test, for the punch-through and background
++	 * passes: else compiled while playing, the first time one is drawn */
++	if (!variant->collect)
++		pipeline(*variant, blend, true);
  	m_preparing = false;
  }
  
@@ -1838,7 +1827,7 @@ index 81bdb45..21f0494 100644
  /* The vertices and the indices of the list, its modelviews and the one of
   * none after them; room for its views and lightsets, written when first
   * used; the scene and its depth emptied, as scene_gl.cpp does: an
-@@ -545,15 +590,51 @@ VkDrawing::begin_scene(const odin_display_list_t &list, const SceneDebug &debug)
+@@ -545,15 +598,51 @@ VkDrawing::begin_scene(const odin_display_list_t &list, const SceneDebug &debug)
  	m_view_written.assign(list.num_vps, false);
  	m_lightset_written.assign(list.num_lss, false);
  
@@ -1899,7 +1888,7 @@ index 81bdb45..21f0494 100644
  
  	m_collecting = false;
  	m_pass.depth_write = true;
-@@ -564,6 +645,79 @@ VkDrawing::begin_scene(const odin_display_list_t &list, const SceneDebug &debug)
+@@ -564,6 +653,79 @@ VkDrawing::begin_scene(const odin_display_list_t &list, const SceneDebug &debug)
  	open_scene(true);
  }
  
@@ -1979,7 +1968,7 @@ index 81bdb45..21f0494 100644
  /* The scene drawn into, emptied first or as it was left: every state of the
   * meshes set again (the commands may have been sent since, see count_now) */
  void
-@@ -601,6 +755,7 @@ VkDrawing::open_scene(bool clear, bool clear_depth)
+@@ -601,6 +763,7 @@ VkDrawing::open_scene(bool clear, bool clear_depth)
  	                                 nullptr };
  
  	m_fn.vkCmdBeginRendering(cb, &rendering);
@@ -1987,7 +1976,7 @@ index 81bdb45..21f0494 100644
  	set_scene_state(cb, m_collecting ? m_collect_set : VK_NULL_HANDLE);
  	m_family = NO_FAMILY;
  }
-@@ -636,6 +791,7 @@ VkDrawing::open_family(unsigned family)
+@@ -636,6 +799,7 @@ VkDrawing::open_family(unsigned family)
  	                                 nullptr };
  
  	m_fn.vkCmdBeginRendering(cb, &rendering);
@@ -1995,7 +1984,7 @@ index 81bdb45..21f0494 100644
  	set_scene_state(cb, m_family_set[family]);
  	m_family = family;
  }
-@@ -673,6 +829,7 @@ VkDrawing::close_scene()
+@@ -673,6 +837,7 @@ VkDrawing::close_scene()
  {
  	if (!m_open)
  		return;
@@ -2003,7 +1992,7 @@ index 81bdb45..21f0494 100644
  	m_fn.vkCmdEndRendering(m_card.commands());
  	m_open = false;
  	if (!m_depth_kept)
-@@ -698,6 +855,7 @@ VkDrawing::use_depth()
+@@ -698,6 +863,7 @@ VkDrawing::use_depth()
  
  	if (!m_depth_wanted)
  		return;
@@ -2011,7 +2000,7 @@ index 81bdb45..21f0494 100644
  	/* MoltenVK clears the colour too with vkCmdClearAttachments */
  	if (!m_open || m_family != NO_FAMILY || m_card.portability_subset()) {
  		close_scene();
-@@ -756,8 +914,10 @@ VkDrawing::begin_pass(const PassRules &rules)
+@@ -756,14 +922,19 @@ VkDrawing::begin_pass(const PassRules &rules)
  	m_pass.alpha_ref = rules.alpha_ref;
  	m_pass.depth_bias = rules.depth_bias;
  	m_pass.depth_write = rules.depth_write;
@@ -2023,7 +2012,16 @@ index 81bdb45..21f0494 100644
  }
  
  void
-@@ -833,6 +993,7 @@ VkDrawing::set_view(const odin_mesh_t &mesh)
+ VkDrawing::end_scene()
+ {
+ 	close_scene();
++	/* Pipelines compiled while playing: into the cache, at most every 20 s */
++	if (m_compiled != m_compiled_kept && host_ns() - m_kept_at > 20'000'000'000ull)
++		write_cache();
+ }
+ 
+ /* What a view gives the shaders: its projection (hikaru_draw.hpp), its depth
+@@ -833,6 +1004,7 @@ VkDrawing::set_view(const odin_mesh_t &mesh)
  	if (m_scissor_vp_index != mesh.vp_index) {
  		const auto [x, y, w, h] = clip_window(vp, m_scale);
  
@@ -2031,7 +2029,7 @@ index 81bdb45..21f0494 100644
  		m_scissor_vp_index = mesh.vp_index;
  		if (w >= 0 && h >= 0) {
  			const int32_t x0 = std::max(x, 0), y0 = std::max(y, 0);
-@@ -860,6 +1021,7 @@ VkDrawing::bind_texture(const MeshDraw &draw)
+@@ -860,6 +1032,7 @@ VkDrawing::bind_texture(const MeshDraw &draw)
  		const VkDescriptorSet set = found != m_textures.end() ? found->second.set.set : m_none_set.set;
  
  		m_bound_texture = draw.texture.id;
@@ -2039,7 +2037,7 @@ index 81bdb45..21f0494 100644
  		m_fn.vkCmdBindDescriptorSets(cb, VK_PIPELINE_BIND_POINT_GRAPHICS, m_mesh_layout, 1, 1, &set, 0, nullptr);
  	}
  	if (draw.texture.id && m_bound_sampler != draw.sampler.id) {
-@@ -867,6 +1029,7 @@ VkDrawing::bind_texture(const MeshDraw &draw)
+@@ -867,6 +1040,7 @@ VkDrawing::bind_texture(const MeshDraw &draw)
  		const VkDescriptorSet set = found != m_samplers.end() ? found->second.set.set : m_nearest_set.set;
  
  		m_bound_sampler = draw.sampler.id;
@@ -2047,16 +2045,15 @@ index 81bdb45..21f0494 100644
  		m_fn.vkCmdBindDescriptorSets(cb, VK_PIPELINE_BIND_POINT_GRAPHICS, m_mesh_layout, 2, 1, &set, 0, nullptr);
  	}
  }
-@@ -900,10 +1063,16 @@ VkDrawing::draw_mesh(const odin_mesh_t &mesh, const MeshDraw &draw)
+@@ -900,10 +1074,15 @@ VkDrawing::draw_mesh(const odin_mesh_t &mesh, const MeshDraw &draw)
  	}
  
  	const VkCommandBuffer cb = m_card.commands();
 -	const VkPipeline p = pipeline(variant, draw.blend);
 +	/* The alpha test only in the passes whose reference can drop a
 +	 * fragment: the opaque one has -1 (pass_rules), and a shader without
-+	 * discard lets the card test the depth before shading (early Z). The
-+	 * measure of renderer_times.cpp has it everywhere every other report. */
-+	const VkPipeline p = pipeline(variant, draw.blend, m_pass.alpha_ref >= 0.0f || g_draw_counts.plain);
++	 * discard lets the card test the depth before shading (early Z). */
++	const VkPipeline p = pipeline(variant, draw.blend, m_pass.alpha_ref >= 0.0f);
  	if (p != m_bound_pipeline) {
 +		flush_draws();
  		m_bound_pipeline = p;
@@ -2065,7 +2062,7 @@ index 81bdb45..21f0494 100644
  	}
  	set_view(mesh);
  	if (variant.has_texture)
-@@ -934,14 +1103,26 @@ VkDrawing::draw_mesh(const odin_mesh_t &mesh, const MeshDraw &draw)
+@@ -934,14 +1113,26 @@ VkDrawing::draw_mesh(const odin_mesh_t &mesh, const MeshDraw &draw)
  		m_push.mv = mv;
  		m_push.mv2 = modelview2_of(*m_list, mesh, mv);
  		m_push.order = m_pass.order;
