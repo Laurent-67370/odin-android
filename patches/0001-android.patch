@@ -686,19 +686,20 @@ index ecbd545..83d07f8 100644
  	if (GL_CLIP_SPACE == 0)
  		gl_Position.z = (gl_Position.z + gl_Position.w) * 0.5;
 diff --git a/src/odin/host/gfx/host_graphics_vk.cpp b/src/odin/host/gfx/host_graphics_vk.cpp
-index f990e61..614187d 100644
+index f990e61..02ab838 100644
 --- a/src/odin/host/gfx/host_graphics_vk.cpp
 +++ b/src/odin/host/gfx/host_graphics_vk.cpp
-@@ -32,6 +32,8 @@
+@@ -32,6 +32,9 @@
  #include "odin/host/gfx/host_graphics.hpp"
  
  #include <algorithm>
++#include <atomic>
 +#include <string>
 +#include <utility>
  #include <cmath>
  #include <cstdio>
  #include <cstring>
-@@ -141,6 +143,8 @@ private:
+@@ -141,6 +144,8 @@ private:
  	 * frame, signalled once its image of the chain is free */
  	VkSwapchainKHR m_swapchain = VK_NULL_HANDLE;
  	VkExtent2D m_extent{};
@@ -707,7 +708,49 @@ index f990e61..614187d 100644
  	std::vector<VkImage> m_chain;
  	std::vector<VkSemaphore> m_drawn;
  	VkSemaphore m_free[vk::Context::FRAMES] = {};
-@@ -245,9 +249,23 @@ VkGraphics::make_swapchain()
+@@ -176,6 +181,21 @@ private:
+ 	bool m_blurred_turned = false;
+ };
+ 
++#if defined(__ANDROID__)
++/* Android takes the window of the app away when it goes to the back, and
++ * gives it a new one when it comes to the front: the surface of the old one
++ * is lost, a new one is made at the next frame */
++std::atomic<bool> g_surface_stale{ false };
++
++bool SDLCALL
++watch_front(void *, SDL_Event *event)
++{
++	if (event->type == SDL_EVENT_DID_ENTER_FOREGROUND)
++		g_surface_stale = true;
++	return true;
++}
++#endif
++
+ VkGraphics::VkGraphics(SDL_Window *window, std::unique_ptr<vk::Context> card)
+ 	: m_window(window), m_card(std::move(card)), m_fn(m_card->fn())
+ {
+@@ -188,6 +208,9 @@ VkGraphics::VkGraphics(SDL_Window *window, std::unique_ptr<vk::Context> card)
+ 	const VkSemaphoreCreateInfo semaphore{ VK_STRUCTURE_TYPE_SEMAPHORE_CREATE_INFO, nullptr, 0 };
+ 	for (VkSemaphore &free : m_free)
+ 		m_card->check(m_fn.vkCreateSemaphore(m_card->device(), &semaphore, nullptr, &free), "a semaphore");
++#if defined(__ANDROID__)
++	SDL_AddEventWatch(watch_front, nullptr);
++#endif
+ }
+ 
+ VkGraphics::~VkGraphics()
+@@ -205,6 +228,9 @@ VkGraphics::~VkGraphics()
+ 		for (const VkSampler sampler : { m_linear, m_levels[0], m_levels[1] })
+ 			m_fn.vkDestroySampler(m_card->device(), sampler, nullptr);
+ 	}
++#if defined(__ANDROID__)
++	SDL_RemoveEventWatch(watch_front, nullptr);
++#endif
+ 	destroy_swapchain();
+ 	for (const VkSemaphore free : m_free)
+ 		m_fn.vkDestroySemaphore(m_card->device(), free, nullptr);
+@@ -245,9 +271,23 @@ VkGraphics::make_swapchain()
  
  	m_fn.vkGetPhysicalDeviceSurfaceCapabilitiesKHR(m_card->gpu(), m_card->surface(), &caps);
  	SDL_GetWindowSizeInPixels(m_window, &w, &h);
@@ -731,13 +774,23 @@ index f990e61..614187d 100644
  	if (m_extent.width == 0 || m_extent.height == 0)
  		return;
  	if (!(caps.supportedUsageFlags & VK_IMAGE_USAGE_TRANSFER_DST_BIT))
-@@ -278,8 +296,25 @@ VkGraphics::make_swapchain()
+@@ -278,8 +318,34 @@ VkGraphics::make_swapchain()
  	const VkSwapchainCreateInfoKHR info{ VK_STRUCTURE_TYPE_SWAPCHAIN_CREATE_INFO_KHR, nullptr, 0, m_card->surface(),
  	                                     images, format.format, format.colorSpace, m_extent, 1,
  	                                     VK_IMAGE_USAGE_TRANSFER_DST_BIT, VK_SHARING_MODE_EXCLUSIVE, 0, nullptr,
 -	                                     caps.currentTransform, alpha, mode, VK_TRUE, VK_NULL_HANDLE };
+-	m_card->check(m_fn.vkCreateSwapchainKHR(m_card->device(), &info, nullptr, &m_swapchain), "the swap chain");
 +	                                     transform, alpha, mode, VK_TRUE, VK_NULL_HANDLE };
- 	m_card->check(m_fn.vkCreateSwapchainKHR(m_card->device(), &info, nullptr, &m_swapchain), "the swap chain");
++	const VkResult made = m_fn.vkCreateSwapchainKHR(m_card->device(), &info, nullptr, &m_swapchain);
++#if defined(__ANDROID__)
++	/* The window gone while the app went to the back: a new surface first */
++	if (made == VK_ERROR_SURFACE_LOST_KHR || made == VK_ERROR_NATIVE_WINDOW_IN_USE_KHR) {
++		m_swapchain = VK_NULL_HANDLE;
++		g_surface_stale = true;
++		return;
++	}
++#endif
++	m_card->check(made, "the swap chain");
 +#if defined(__ANDROID__)
 +	{
 +		/* Told when it changes, not at each chain made */
@@ -758,7 +811,7 @@ index f990e61..614187d 100644
  
  	m_fn.vkGetSwapchainImagesKHR(m_card->device(), m_swapchain, &count, nullptr);
  	m_chain.resize(count);
-@@ -304,7 +339,10 @@ VkGraphics::show_window()
+@@ -304,17 +370,40 @@ VkGraphics::show_window()
  	int w = 0, h = 0;
  
  	SDL_GetWindowSizeInPixels(m_window, &w, &h);
@@ -770,7 +823,39 @@ index f990e61..614187d 100644
  		m_remake = true;
  	if (m_remake)
  		make_swapchain();
-@@ -340,9 +378,17 @@ VkGraphics::show_window()
+ 
++#if defined(__ANDROID__)
++	if (g_surface_stale.exchange(false) || !m_card->surface()) {
++		m_card->send_and_wait();
++		m_fn.vkQueueWaitIdle(m_card->queue());
++		destroy_swapchain();
++		m_remake = true;
++		if (!m_card->new_surface(m_window)) {
++			std::fprintf(stderr, "vulkan: no surface for the window yet: %s\n", SDL_GetError());
++			m_card->end_frame({});
++			return;
++		}
++		std::fprintf(stderr, "vulkan: a new surface for the window, the app back in front\n");
++	}
++#endif
+ 	const VkCommandBuffer cb = m_card->commands();
+ 	const VkSemaphore free = m_free[m_card->frame()];
+ 	uint32_t index = 0;
+ 
+-	if (!m_swapchain ||
+-	    m_fn.vkAcquireNextImageKHR(m_card->device(), m_swapchain, UINT64_MAX, free, VK_NULL_HANDLE, &index) < 0) {
++	const VkResult acquired = m_swapchain ? m_fn.vkAcquireNextImageKHR(m_card->device(), m_swapchain, UINT64_MAX, free,
++		                                                                    VK_NULL_HANDLE, &index) :
++		                                        VK_ERROR_OUT_OF_DATE_KHR;
++	if (acquired < 0) {
++#if defined(__ANDROID__)
++		if (acquired == VK_ERROR_SURFACE_LOST_KHR)
++			g_surface_stale = true;
++#endif
+ 		m_remake = true;
+ 		m_card->end_frame({});
+ 		return;
+@@ -340,9 +429,19 @@ VkGraphics::show_window()
  	const VkPresentInfoKHR present{ VK_STRUCTURE_TYPE_PRESENT_INFO_KHR, nullptr, 1, &m_drawn[index], 1, &m_swapchain,
  	                                &index, nullptr };
  	const VkResult result = m_fn.vkQueuePresentKHR(m_card->queue(), &present);
@@ -779,6 +864,8 @@ index f990e61..614187d 100644
 +	 * identity above, the screen turned); a new size remakes the chain */
 +	if (result == VK_ERROR_OUT_OF_DATE_KHR)
 +		m_remake = true;
++	else if (result == VK_ERROR_SURFACE_LOST_KHR)
++		g_surface_stale = true;
 +	else if (result != VK_SUCCESS && result != VK_SUBOPTIMAL_KHR)
 +#else
  	if (result == VK_SUBOPTIMAL_KHR || result == VK_ERROR_OUT_OF_DATE_KHR)
@@ -789,7 +876,7 @@ index f990e61..614187d 100644
  }
  
 diff --git a/src/odin/host/gfx/vk_common.cpp b/src/odin/host/gfx/vk_common.cpp
-index 2431dbe..a3f5b69 100644
+index 2431dbe..6eba24d 100644
 --- a/src/odin/host/gfx/vk_common.cpp
 +++ b/src/odin/host/gfx/vk_common.cpp
 @@ -26,6 +26,7 @@
@@ -800,7 +887,23 @@ index 2431dbe..a3f5b69 100644
  #include <cstdlib>
  #include <cstring>
  #include <optional>
-@@ -508,6 +509,8 @@ Context::make_device(std::string &why)
+@@ -147,6 +148,15 @@ Context::make(SDL_Window *window, const std::string &gpu, std::string &why)
+ 	return card;
+ }
+ 
++bool
++Context::new_surface(SDL_Window *window)
++{
++	if (m_surface)
++		m_fn.vkDestroySurfaceKHR(m_instance, m_surface, nullptr);
++	m_surface = VK_NULL_HANDLE;
++	return SDL_Vulkan_CreateSurface(window, m_instance, nullptr, &m_surface) && m_surface;
++}
++
+ /* An instance of its own: OpenGL may be drawing, and SDL has not loaded
+  * Vulkan for it */
+ std::vector<std::string>
+@@ -508,6 +518,8 @@ Context::make_device(std::string &why)
  		m_max_anisotropy = 1.0f;
  	wanted.all.features.geometryShader = m_geometry_shaders = had.all.features.geometryShader;
  	wanted.all.features.independentBlend = m_independent_blend = had.all.features.independentBlend;
@@ -809,7 +912,7 @@ index 2431dbe..a3f5b69 100644
  	m_primitive_ids_tessellation = !had.all.features.geometryShader && had.all.features.tessellationShader;
  	wanted.all.features.tessellationShader = m_primitive_ids_tessellation;
  	m_primitive_ids = had.all.features.geometryShader || m_primitive_ids_tessellation;
-@@ -900,7 +903,29 @@ Context::make_buffer(VkDeviceSize size, VkBufferUsageFlags usage)
+@@ -900,7 +912,29 @@ Context::make_buffer(VkDeviceSize size, VkBufferUsageFlags usage)
  	check(m_fn.vkCreateBuffer(m_device, &info, nullptr, &buffer.buffer), "a buffer");
  	m_fn.vkGetBufferMemoryRequirements(m_device, buffer.buffer, &needs);
  	const VkMemoryPropertyFlags seen = VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT;
@@ -840,7 +943,7 @@ index 2431dbe..a3f5b69 100644
  	if (type == UINT32_MAX)
  		type = memory_type(needs.memoryTypeBits, seen);
  	const VkMemoryAllocateInfo memory{ VK_STRUCTURE_TYPE_MEMORY_ALLOCATE_INFO, nullptr, needs.size, type };
-@@ -935,7 +960,8 @@ Context::staging(VkDeviceSize size)
+@@ -935,7 +969,8 @@ Context::staging(VkDeviceSize size)
  		buffer = make_buffer(std::max<VkDeviceSize>(size, 1u << 20),
  		                     VK_BUFFER_USAGE_TRANSFER_SRC_BIT | VK_BUFFER_USAGE_TRANSFER_DST_BIT |
  		                             VK_BUFFER_USAGE_VERTEX_BUFFER_BIT | VK_BUFFER_USAGE_INDEX_BUFFER_BIT |
@@ -851,7 +954,7 @@ index 2431dbe..a3f5b69 100644
  	return buffer;
  }
 diff --git a/src/odin/host/gfx/vk_common.hpp b/src/odin/host/gfx/vk_common.hpp
-index c29c57e..f986118 100644
+index c29c57e..9f4fd5f 100644
 --- a/src/odin/host/gfx/vk_common.hpp
 +++ b/src/odin/host/gfx/vk_common.hpp
 @@ -83,7 +83,7 @@ namespace odin::vk {
@@ -863,7 +966,18 @@ index c29c57e..f986118 100644
  	F(vkCmdFillBuffer) F(vkCmdCopyBuffer) F(vkCreateQueryPool) F(vkDestroyQueryPool) F(vkGetQueryPoolResults) \
  	F(vkCreatePipelineCache) F(vkDestroyPipelineCache) F(vkGetPipelineCacheData) F(vkMergePipelineCaches) \
  	G(vkQueueSubmit2, vkQueueSubmit2KHR) G(vkCmdPipelineBarrier2, vkCmdPipelineBarrier2KHR) \
-@@ -218,6 +218,8 @@ public:
+@@ -198,6 +198,10 @@ public:
+ 	uint32_t queue_family() const { return m_queue_family; }
+ 	uint32_t api_version() const { return m_api_version; }
+ 	VkSurfaceKHR surface() const { return m_surface; }
++	/* A new surface for the window, the one before gone (Android gives the
++	 * app a new window when it comes back to the front); false, and none,
++	 * when it cannot be made yet. The swap chain must be gone first. */
++	bool new_surface(SDL_Window *window);
+ 	const std::string &name() const { return m_name; }
+ 	const VkPhysicalDeviceProperties &properties() const { return m_properties; }
+ 	const VkPhysicalDeviceLimits &limits() const { return m_properties.limits; }
+@@ -218,6 +222,8 @@ public:
  	bool geometry_shaders() const { return m_geometry_shaders; }
  	/* Each colour attachment its own blend */
  	bool independent_blend() const { return m_independent_blend; }
@@ -872,7 +986,7 @@ index c29c57e..f986118 100644
  	bool portability_subset() const { return m_portability_subset; }
  	/* Whether the queue writes the time, its stamps reset by the
  	 * processor; the bits of a stamp and its unit, in ns */
-@@ -370,6 +372,7 @@ private:
+@@ -370,6 +376,7 @@ private:
  	bool m_primitive_ids_tessellation = false;
  	bool m_geometry_shaders = false;
  	bool m_independent_blend = false;
