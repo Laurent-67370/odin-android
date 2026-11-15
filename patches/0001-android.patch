@@ -1,5 +1,5 @@
 diff --git a/CMakeLists.txt b/CMakeLists.txt
-index e034434..23aa3bd 100644
+index e034434..84dd582 100644
 --- a/CMakeLists.txt
 +++ b/CMakeLists.txt
 @@ -16,6 +16,12 @@ include(GNUInstallDirs)
@@ -72,7 +72,7 @@ index e034434..23aa3bd 100644
 +# their corners (mesh.vert, VERTEX_DEPTH), not written by each fragment
 +set(GLSL_EXTRA "")
 +if(ANDROID)
-+	set(GLSL_EXTRA "echo '#define VERTEX_DEPTH 1'; ")
++	set(GLSL_EXTRA "echo '#define VERTEX_DEPTH 1'; echo '#define DRAW_TABLE 1'; ")
 +endif()
  set(GLSL ${CMAKE_SOURCE_DIR}/src/odin/host/gfx/glsl)
  set(SPIRV_DIR ${CMAKE_BINARY_DIR}/spirv)
@@ -248,6 +248,19 @@ index 1a4e66f..2b25c2d 100644
  	if (parsed != odin::Parsed::RUN) {
  		odin::print_help(argv[0]);
  		return parsed == odin::Parsed::HELP_ASKED ? 0 : 1;
+diff --git a/src/odin/host/app/options.hpp b/src/odin/host/app/options.hpp
+index 31918b5..3ac4953 100644
+--- a/src/odin/host/app/options.hpp
++++ b/src/odin/host/app/options.hpp
+@@ -48,7 +48,7 @@ inline constexpr const char *VSYNCS[] = { "off", "on", "adaptive" };
+ inline constexpr DisplaySides SIDES = DisplaySides::BEZEL;
+ inline constexpr const char *SIDES_NAMES[] = { "off", "blur", "image" };
+ /* The graphics API by default, and the names of odin.ini */
+-#if defined(__APPLE__)
++#if defined(__APPLE__) || defined(__ANDROID__)
+ inline constexpr DisplayApi API = DisplayApi::VULKAN;
+ #else
+ inline constexpr DisplayApi API = DisplayApi::OPENGL;
 diff --git a/src/odin/host/app/session.cpp b/src/odin/host/app/session.cpp
 index 094c084..af43055 100644
 --- a/src/odin/host/app/session.cpp
@@ -365,10 +378,42 @@ index ddbdf32..5a222d1 100644
  		return buffers > 0 && primitive_ids() && (es_version() >= 32 || has_extension("GL_OES_shader_image_atomic"));
  	}();
 diff --git a/src/odin/host/gfx/glsl/mesh.frag b/src/odin/host/gfx/glsl/mesh.frag
-index bcae486..5743a1f 100644
+index bcae486..bb3118e 100644
 --- a/src/odin/host/gfx/glsl/mesh.frag
 +++ b/src/odin/host/gfx/glsl/mesh.frag
-@@ -345,8 +345,12 @@ main (void)
+@@ -105,6 +105,23 @@ layout(set = 3, binding = 4) uniform sampler2D u_eye;
+ #if COLLECT != 0
+ layout(set = 3, binding = 5) uniform sampler2D u_flagged_eye;
+ #endif
++#ifdef DRAW_TABLE
++/* What the draw takes, from mesh.vert (its table) */
++layout(location = 11) flat in uvec4 p_draw_u;
++layout(location = 12) flat in vec4 p_draw_f;
++layout(location = 13) flat in vec4 p_draw_g;
++#define u_view p_draw_u.x
++#define u_lightset p_draw_u.y
++#define u_pattern p_draw_u.z
++#define u_order p_draw_u.w
++#define u_alpha_ref p_draw_f.x
++#define u_weigh_by_alpha p_draw_f.y
++#define u_sort_scale p_draw_f.z
++#define u_scale p_draw_f.w
++#define u_family p_draw_g.x
++#define u_depth_scale p_draw_g.y
++#define u_blend_mode floatBitsToUint (p_draw_g.z)
++#else
+ layout(push_constant) uniform mesh_t {
+ 	uint u_view, u_mv, u_mv2, u_lightset;
+ 	float u_depth_scale, u_alpha_ref, u_weigh_by_alpha;
+@@ -115,6 +132,7 @@ layout(push_constant) uniform mesh_t {
+ 	float u_scale;
+ 	float u_family;
+ };
++#endif
+ #define u_lights u_lightsets[u_lightset].lights
+ #define u_ambient u_views[u_view].ambient
+ #define u_texture sampler2D (u_texels, u_sampling)
+@@ -345,8 +363,12 @@ main (void)
  	 * near planes the games send, the projected depth cannot tell apart
  	 * surfaces that the cabinets do (the shadow of the AIRTRIX combo
  	 * labels lies 0.06 behind them at a depth of 560). */
@@ -381,11 +426,108 @@ index bcae486..5743a1f 100644
  
  #if FAMILIES != 0
  	/* In a view with both families of the 101 (depth_bias.hpp), a mesh is
+diff --git a/src/odin/host/gfx/glsl/mesh.geom b/src/odin/host/gfx/glsl/mesh.geom
+index ec9f236..80fcc81 100644
+--- a/src/odin/host/gfx/glsl/mesh.geom
++++ b/src/odin/host/gfx/glsl/mesh.geom
+@@ -65,6 +65,14 @@ layout(location = 7) out float p_alpha;
+ layout(location = 8) flat out vec2 p_corner0;
+ layout(location = 9) flat out vec2 p_corner1;
+ layout(location = 10) flat out vec2 p_corner2;
++#ifdef DRAW_TABLE
++layout(location = 11) flat in uvec4 g_draw_u[];
++layout(location = 12) flat in vec4 g_draw_f[];
++layout(location = 13) flat in vec4 g_draw_g[];
++layout(location = 11) flat out uvec4 p_draw_u;
++layout(location = 12) flat out vec4 p_draw_f;
++layout(location = 13) flat out vec4 p_draw_g;
++#endif
+ 
+ /* The screen of the hardware (hikaru_draw.hpp) */
+ const vec2 SCREEN = vec2 (640.0, 480.0);
+@@ -87,6 +95,11 @@ corner (vec2 at, vec3 w, vec2 c[3])
+ 	p_corner1 = c[1];
+ 	p_corner2 = c[2];
+ 	gl_PrimitiveID = gl_PrimitiveIDIn;
++#ifdef DRAW_TABLE
++	p_draw_u = g_draw_u[0];
++	p_draw_f = g_draw_f[0];
++	p_draw_g = g_draw_g[0];
++#endif
+ 	EmitVertex ();
+ }
+ 
 diff --git a/src/odin/host/gfx/glsl/mesh.vert b/src/odin/host/gfx/glsl/mesh.vert
-index ecbd545..d9ed644 100644
+index ecbd545..e345db3 100644
 --- a/src/odin/host/gfx/glsl/mesh.vert
 +++ b/src/odin/host/gfx/glsl/mesh.vert
-@@ -148,6 +148,13 @@ void main (void) {
+@@ -44,6 +44,38 @@ layout(std430, set = 0, binding = 0) readonly buffer views_t {
+ layout(std430, set = 0, binding = 1) readonly buffer modelviews_t {
+ 	mat4 u_modelviews[];
+ };
++#ifdef DRAW_TABLE
++/* Android: what each draw takes, in a table its instance number reads
++ * (the draws of a run go in one indirect call, scene_vk.cpp); handed to
++ * mesh.frag flat */
++struct draw_t {
++	uint view, mv, mv2, lightset;
++	float depth_scale, alpha_ref, weigh_by_alpha;
++	uint pattern;
++	uint order, blend_mode;
++	float sort_scale;
++	uint snap;
++	float scale;
++	float family;
++};
++layout(std430, set = 0, binding = 3) readonly buffer draws_t {
++	draw_t u_draws[];
++};
++#define u_view u_draws[gl_InstanceIndex].view
++#define u_mv u_draws[gl_InstanceIndex].mv
++#define u_mv2 u_draws[gl_InstanceIndex].mv2
++#define u_lightset u_draws[gl_InstanceIndex].lightset
++#define u_depth_scale u_draws[gl_InstanceIndex].depth_scale
++#define u_alpha_ref u_draws[gl_InstanceIndex].alpha_ref
++#define u_weigh_by_alpha u_draws[gl_InstanceIndex].weigh_by_alpha
++#define u_pattern u_draws[gl_InstanceIndex].pattern
++#define u_order u_draws[gl_InstanceIndex].order
++#define u_blend_mode u_draws[gl_InstanceIndex].blend_mode
++#define u_sort_scale u_draws[gl_InstanceIndex].sort_scale
++#define u_snap u_draws[gl_InstanceIndex].snap
++#define u_scale u_draws[gl_InstanceIndex].scale
++#define u_family u_draws[gl_InstanceIndex].family
++#else
+ layout(push_constant) uniform mesh_t {
+ 	uint u_view, u_mv, u_mv2, u_lightset;
+ 	float u_depth_scale, u_alpha_ref, u_weigh_by_alpha;
+@@ -54,6 +86,7 @@ layout(push_constant) uniform mesh_t {
+ 	float u_scale;
+ 	float u_family;
+ };
++#endif
+ /* 0: the card clips z from 0 to w, not from -w to w as OpenGL */
+ layout(constant_id = 0) const int GL_CLIP_SPACE = 1;
+ #define u_projection u_views[u_view].projection
+@@ -118,8 +151,18 @@ layout(location = 7) out float p_alpha;
+ layout(location = 8) flat out vec2 p_corner0;
+ layout(location = 9) flat out vec2 p_corner1;
+ layout(location = 10) flat out vec2 p_corner2;
++#ifdef DRAW_TABLE
++layout(location = 11) flat out uvec4 p_draw_u;	/* view, lightset, pattern, order */
++layout(location = 12) flat out vec4 p_draw_f;	/* alpha_ref, weigh_by_alpha, sort_scale, scale */
++layout(location = 13) flat out vec4 p_draw_g;	/* family, depth_scale, blend_mode */
++#endif
+ 
+ void main (void) {
++#ifdef DRAW_TABLE
++	p_draw_u = uvec4 (u_view, u_lightset, u_pattern, u_order);
++	p_draw_f = vec4 (u_alpha_ref, u_weigh_by_alpha, u_sort_scale, u_scale);
++	p_draw_g = vec4 (u_family, u_depth_scale, uintBitsToFloat (u_blend_mode), 0.0);
++#endif
+ 	/* 1: the second modelview, 64: without the 3x3, 128: without
+ 	 * the last row. A normal goes through the 3x3 of its modelview,
+ 	 * as the position does (US patent 6,714,690 of SEGA: the same
+@@ -148,6 +191,13 @@ void main (void) {
  	}
  	/* The depth bias brings the whole position nearer: same pixel. */
  	gl_Position = mul (u_projection, vec4 (p_position.xyz * u_depth_scale, 1.0));
@@ -458,7 +600,7 @@ index f990e61..67362b2 100644
  }
  
 diff --git a/src/odin/host/gfx/vk_common.cpp b/src/odin/host/gfx/vk_common.cpp
-index 2431dbe..51651ce 100644
+index 2431dbe..a3f5b69 100644
 --- a/src/odin/host/gfx/vk_common.cpp
 +++ b/src/odin/host/gfx/vk_common.cpp
 @@ -26,6 +26,7 @@
@@ -469,7 +611,16 @@ index 2431dbe..51651ce 100644
  #include <cstdlib>
  #include <cstring>
  #include <optional>
-@@ -900,7 +901,29 @@ Context::make_buffer(VkDeviceSize size, VkBufferUsageFlags usage)
+@@ -508,6 +509,8 @@ Context::make_device(std::string &why)
+ 		m_max_anisotropy = 1.0f;
+ 	wanted.all.features.geometryShader = m_geometry_shaders = had.all.features.geometryShader;
+ 	wanted.all.features.independentBlend = m_independent_blend = had.all.features.independentBlend;
++	m_multi_draw = had.all.features.multiDrawIndirect && had.all.features.drawIndirectFirstInstance;
++	wanted.all.features.multiDrawIndirect = wanted.all.features.drawIndirectFirstInstance = m_multi_draw;
+ 	m_primitive_ids_tessellation = !had.all.features.geometryShader && had.all.features.tessellationShader;
+ 	wanted.all.features.tessellationShader = m_primitive_ids_tessellation;
+ 	m_primitive_ids = had.all.features.geometryShader || m_primitive_ids_tessellation;
+@@ -900,7 +903,29 @@ Context::make_buffer(VkDeviceSize size, VkBufferUsageFlags usage)
  	check(m_fn.vkCreateBuffer(m_device, &info, nullptr, &buffer.buffer), "a buffer");
  	m_fn.vkGetBufferMemoryRequirements(m_device, buffer.buffer, &needs);
  	const VkMemoryPropertyFlags seen = VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT;
@@ -500,6 +651,46 @@ index 2431dbe..51651ce 100644
  	if (type == UINT32_MAX)
  		type = memory_type(needs.memoryTypeBits, seen);
  	const VkMemoryAllocateInfo memory{ VK_STRUCTURE_TYPE_MEMORY_ALLOCATE_INFO, nullptr, needs.size, type };
+@@ -935,7 +960,8 @@ Context::staging(VkDeviceSize size)
+ 		buffer = make_buffer(std::max<VkDeviceSize>(size, 1u << 20),
+ 		                     VK_BUFFER_USAGE_TRANSFER_SRC_BIT | VK_BUFFER_USAGE_TRANSFER_DST_BIT |
+ 		                             VK_BUFFER_USAGE_VERTEX_BUFFER_BIT | VK_BUFFER_USAGE_INDEX_BUFFER_BIT |
+-		                             VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | VK_BUFFER_USAGE_UNIFORM_BUFFER_BIT);
++		                             VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | VK_BUFFER_USAGE_UNIFORM_BUFFER_BIT |
++		                             VK_BUFFER_USAGE_INDIRECT_BUFFER_BIT);
+ 	}
+ 	return buffer;
+ }
+diff --git a/src/odin/host/gfx/vk_common.hpp b/src/odin/host/gfx/vk_common.hpp
+index c29c57e..f986118 100644
+--- a/src/odin/host/gfx/vk_common.hpp
++++ b/src/odin/host/gfx/vk_common.hpp
+@@ -83,7 +83,7 @@ namespace odin::vk {
+ 	F(vkCreateSampler) F(vkDestroySampler) F(vkCmdBindPipeline) F(vkCmdBindDescriptorSets) F(vkCmdPushConstants) \
+ 	F(vkCmdSetViewport) F(vkCmdSetScissor) F(vkCmdDraw) \
+ 	F(vkCmdCopyImageToBuffer) F(vkCmdCopyBufferToImage) F(vkCmdBlitImage) \
+-	F(vkCmdBindVertexBuffers) F(vkCmdBindIndexBuffer) F(vkCmdDrawIndexed) F(vkFreeDescriptorSets) \
++	F(vkCmdBindVertexBuffers) F(vkCmdBindIndexBuffer) F(vkCmdDrawIndexed) F(vkCmdDrawIndexedIndirect) F(vkFreeDescriptorSets) \
+ 	F(vkCmdFillBuffer) F(vkCmdCopyBuffer) F(vkCreateQueryPool) F(vkDestroyQueryPool) F(vkGetQueryPoolResults) \
+ 	F(vkCreatePipelineCache) F(vkDestroyPipelineCache) F(vkGetPipelineCacheData) F(vkMergePipelineCaches) \
+ 	G(vkQueueSubmit2, vkQueueSubmit2KHR) G(vkCmdPipelineBarrier2, vkCmdPipelineBarrier2KHR) \
+@@ -218,6 +218,8 @@ public:
+ 	bool geometry_shaders() const { return m_geometry_shaders; }
+ 	/* Each colour attachment its own blend */
+ 	bool independent_blend() const { return m_independent_blend; }
++	/* Draws given in a buffer, several in one call, from any instance */
++	bool multi_draw() const { return m_multi_draw; }
+ 	bool portability_subset() const { return m_portability_subset; }
+ 	/* Whether the queue writes the time, its stamps reset by the
+ 	 * processor; the bits of a stamp and its unit, in ns */
+@@ -370,6 +372,7 @@ private:
+ 	bool m_primitive_ids_tessellation = false;
+ 	bool m_geometry_shaders = false;
+ 	bool m_independent_blend = false;
++	bool m_multi_draw = false;
+ 	bool m_host_query_reset = false;
+ 	uint32_t m_stamp_bits = 0;
+ 	bool m_validation = false;
 diff --git a/src/odin/host/input/controls.cpp b/src/odin/host/input/controls.cpp
 index c4acd40..2f94263 100644
 --- a/src/odin/host/input/controls.cpp
@@ -1081,10 +1272,10 @@ index 0000000..d8b10a4
 +
 +#endif /* ODIN_TOUCH_PAD_HPP */
 diff --git a/src/odin/host/renderer/hikaru/drawing.hpp b/src/odin/host/renderer/hikaru/drawing.hpp
-index 92dcbe5..7556acd 100644
+index 92dcbe5..2fcdaa6 100644
 --- a/src/odin/host/renderer/hikaru/drawing.hpp
 +++ b/src/odin/host/renderer/hikaru/drawing.hpp
-@@ -48,6 +48,14 @@
+@@ -48,6 +48,16 @@
  
  namespace odin {
  
@@ -1093,6 +1284,8 @@ index 92dcbe5..7556acd 100644
 + * pipelines bound, the draws */
 +struct DrawCounts {
 +	uint64_t scenes = 0, families = 0, pipelines = 0, draws = 0;
++	uint64_t calls = 0;	/* the calls the draws went in (Android: runs of them) */
++	bool one_by_one = false;	/* each draw its own call, to compare (renderer_times.cpp) */
 +};
 +inline DrawCounts g_draw_counts;
 +
@@ -1214,10 +1407,10 @@ index 1253845..eb1d710 100644
  
  GLuint
 diff --git a/src/odin/host/renderer/hikaru/renderer_times.cpp b/src/odin/host/renderer/hikaru/renderer_times.cpp
-index 91fa8e4..ffc1660 100644
+index 91fa8e4..6fda7d4 100644
 --- a/src/odin/host/renderer/hikaru/renderer_times.cpp
 +++ b/src/odin/host/renderer/hikaru/renderer_times.cpp
-@@ -125,6 +125,15 @@ DrawTimes::end()
+@@ -125,6 +125,23 @@ DrawTimes::end()
  		m_sums[i].host_worst = std::max(m_sums[i].host_worst, host[i]);
  	}
  	m_drawn++;
@@ -1225,7 +1418,15 @@ index 91fa8e4..ffc1660 100644
 +	 * without being closed (the app of a phone left) */
 +	if (m_drawn >= 300) {
 +		tell();
++		/* Android: the next 300 frames the other way, to compare the
++		 * runs of draws with the draws one by one in the same game */
++		const bool one_by_one = g_draw_counts.one_by_one;
 +		g_draw_counts = {};
++#if defined(__ANDROID__)
++		g_draw_counts.one_by_one = !one_by_one;
++#else
++		(void)one_by_one;
++#endif
 +		m_sums = {};
 +		m_drawn = m_read = m_lists = m_fragments = 0;
 +		m_fragments_worst = 0;
@@ -1233,13 +1434,14 @@ index 91fa8e4..ffc1660 100644
  }
  
  /* The stamps of a frame, if the card has them all: the last one tells. A
-@@ -210,6 +219,12 @@ DrawTimes::tell() const
+@@ -210,6 +227,13 @@ DrawTimes::tell() const
  	if (m_stamps)
  		std::fprintf(stderr, "  %7.3f", ms(card, m_read));
  	std::fprintf(stderr, "\n");
 +	const double frames = static_cast<double>(m_drawn);
-+	std::fprintf(stderr, "drawing:  a frame: %.1f scene renderings, %.1f family renderings, %.1f pipelines bound, "
-+	             "%.1f draws\n", static_cast<double>(g_draw_counts.scenes) / frames,
++	std::fprintf(stderr, "drawing:  [%s] a frame: %.1f calls of draws, %.1f scene renderings, %.1f family renderings, "
++	             "%.1f pipelines bound, %.1f draws\n", g_draw_counts.one_by_one ? "one draw a call" : "draws in runs",
++	             static_cast<double>(g_draw_counts.calls) / frames, static_cast<double>(g_draw_counts.scenes) / frames,
 +	             static_cast<double>(g_draw_counts.families) / frames,
 +	             static_cast<double>(g_draw_counts.pipelines) / frames,
 +	             static_cast<double>(g_draw_counts.draws) / frames);
@@ -1247,10 +1449,19 @@ index 91fa8e4..ffc1660 100644
  
  } /* namespace odin */
 diff --git a/src/odin/host/renderer/hikaru/vk/drawing_vk.hpp b/src/odin/host/renderer/hikaru/vk/drawing_vk.hpp
-index 2c8c5a7..b258e55 100644
+index 2c8c5a7..87e4f4e 100644
 --- a/src/odin/host/renderer/hikaru/vk/drawing_vk.hpp
 +++ b/src/odin/host/renderer/hikaru/vk/drawing_vk.hpp
-@@ -276,6 +276,12 @@ private:
+@@ -159,6 +159,8 @@ private:
+ 		float scale;
+ 		float family;
+ 	};
++	/* draw_t of glsl/mesh.vert (std430: 14 words) */
++	static_assert(sizeof(MeshPush) == 56);
+ 
+ 	/* The number of the picture of the frame, as the window reads it;
+ 	 * the format of the pictures */
+@@ -276,6 +278,22 @@ private:
  	SceneDebug m_debug{};
  	vk::Slice m_vertices{}, m_indices{}, m_views{}, m_lightsets{};
  	VkDescriptorSet m_list_set = VK_NULL_HANDLE;
@@ -1260,6 +1471,16 @@ index 2c8c5a7..b258e55 100644
 +	VkDeviceSize m_on_card_used[vk::Context::FRAMES]{};
 +	unsigned m_on_card_frame = ~0u;
 +	vk::Slice to_card(const vk::Slice &from, VkDeviceSize size, VkDeviceSize align);
++	/* Android: what each draw takes, in the table of the list
++	 * (glsl/mesh.vert, DRAW_TABLE), and the run of draws waiting for one
++	 * indirect call: sent before any other command (flush_draws) */
++	vk::Slice m_draws{};
++	uint32_t m_draws_used = 0, m_draws_room = 0;
++	VkDescriptorBufferInfo m_list_buffers[3]{};
++	std::vector<VkDrawIndexedIndirectCommand> m_pending;
++	void flush_draws();
++	void more_draws();
++	void write_list_set();
  	uint32_t m_identity = 0;	/* the modelview of none */
  	std::vector<bool> m_view_written, m_lightset_written;
  	VkPipeline m_bound_pipeline = VK_NULL_HANDLE;
@@ -1278,7 +1499,7 @@ index a5b195c..a066dee 100644
  		m_card.destroy_image(*image);
  	for (vk::Pass *pass : { &m_blender, &m_compose, &m_presenter })
 diff --git a/src/odin/host/renderer/hikaru/vk/scene_vk.cpp b/src/odin/host/renderer/hikaru/vk/scene_vk.cpp
-index 81bdb45..0ada786 100644
+index 81bdb45..7a79db9 100644
 --- a/src/odin/host/renderer/hikaru/vk/scene_vk.cpp
 +++ b/src/odin/host/renderer/hikaru/vk/scene_vk.cpp
 @@ -43,6 +43,7 @@
@@ -1289,7 +1510,32 @@ index 81bdb45..0ada786 100644
  #include <filesystem>
  
  namespace odin {
-@@ -513,6 +514,39 @@ VkDrawing::prepare_program(uint64_t key)
+@@ -237,14 +238,21 @@ VkDrawing::make_mesh_layout()
+ 	const VkDevice device = m_card.device();
+ 
+ 	/* The views, the modelviews, the lightsets */
+-	const VkDescriptorSetLayoutBinding list[3] = {
++	/* ... and on Android the table of the draws */
++	const VkDescriptorSetLayoutBinding list[4] = {
+ 		{ 0, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, 1, VK_SHADER_STAGE_VERTEX_BIT | VK_SHADER_STAGE_FRAGMENT_BIT,
+ 		  nullptr },
+ 		{ 1, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, 1, VK_SHADER_STAGE_VERTEX_BIT, nullptr },
+ 		{ 2, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, 1, VK_SHADER_STAGE_FRAGMENT_BIT, nullptr },
++		{ 3, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, 1, VK_SHADER_STAGE_VERTEX_BIT, nullptr },
+ 	};
+-	const VkDescriptorSetLayoutCreateInfo set{ VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_CREATE_INFO, nullptr, 0, 3,
+-	                                           list };
++#if defined(__ANDROID__)
++	constexpr uint32_t LIST_BINDINGS = 4;
++#else
++	constexpr uint32_t LIST_BINDINGS = 3;
++#endif
++	const VkDescriptorSetLayoutCreateInfo set{ VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_CREATE_INFO, nullptr, 0,
++	                                           LIST_BINDINGS, list };
+ 	m_card.check(m_fn.vkCreateDescriptorSetLayout(device, &set, nullptr, &m_list_layout), "the set of a list");
+ 	make_sets(m_texture_sets, VK_DESCRIPTOR_TYPE_SAMPLED_IMAGE, VK_SHADER_STAGE_FRAGMENT_BIT);
+ 	make_sets(m_sampler_sets, VK_DESCRIPTOR_TYPE_SAMPLER, VK_SHADER_STAGE_FRAGMENT_BIT);
+@@ -513,6 +521,39 @@ VkDrawing::prepare_program(uint64_t key)
  	m_preparing = false;
  }
  
@@ -1329,10 +1575,19 @@ index 81bdb45..0ada786 100644
  /* The vertices and the indices of the list, its modelviews and the one of
   * none after them; room for its views and lightsets, written when first
   * used; the scene and its depth emptied, as scene_gl.cpp does: an
-@@ -545,10 +579,38 @@ VkDrawing::begin_scene(const odin_display_list_t &list, const SceneDebug &debug)
+@@ -545,15 +586,51 @@ VkDrawing::begin_scene(const odin_display_list_t &list, const SceneDebug &debug)
  	m_view_written.assign(list.num_vps, false);
  	m_lightset_written.assign(list.num_lss, false);
  
+-	m_list_set = m_card.frame_set(m_list_layout);
+-	const VkDescriptorBufferInfo buffers[3] = { { m_views.buffer, m_views.offset, view_bytes },
+-		                                    { mvs.buffer, mvs.offset, mv_bytes },
+-		                                    { m_lightsets.buffer, m_lightsets.offset, ls_bytes } };
+-	VkWriteDescriptorSet writes[3];
+-	for (uint32_t i = 0; i < 3; i++)
+-		writes[i] = { VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET, nullptr, m_list_set, i, 0, 1,
+-		              VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, nullptr, &buffers[i], nullptr };
+-	m_fn.vkUpdateDescriptorSets(m_card.device(), 3, writes, 0, nullptr);
 +	vk::Slice views = m_views, modelviews = mvs, lightsets = m_lightsets;
 +#if defined(__ANDROID__)
 +	/* A phone's card reads the processor's memory through the coherence
@@ -1361,17 +1616,107 @@ index 81bdb45..0ada786 100644
 +	                              VK_ACCESS_2_SHADER_STORAGE_READ_BIT);
 +#endif
 +
- 	m_list_set = m_card.frame_set(m_list_layout);
--	const VkDescriptorBufferInfo buffers[3] = { { m_views.buffer, m_views.offset, view_bytes },
--		                                    { mvs.buffer, mvs.offset, mv_bytes },
--		                                    { m_lightsets.buffer, m_lightsets.offset, ls_bytes } };
-+	const VkDescriptorBufferInfo buffers[3] = { { views.buffer, views.offset, view_bytes },
-+		                                    { modelviews.buffer, modelviews.offset, mv_bytes },
-+		                                    { lightsets.buffer, lightsets.offset, ls_bytes } };
- 	VkWriteDescriptorSet writes[3];
- 	for (uint32_t i = 0; i < 3; i++)
- 		writes[i] = { VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET, nullptr, m_list_set, i, 0, 1,
-@@ -601,6 +663,7 @@ VkDrawing::open_scene(bool clear, bool clear_depth)
++	m_list_buffers[0] = { views.buffer, views.offset, view_bytes };
++	m_list_buffers[1] = { modelviews.buffer, modelviews.offset, mv_bytes };
++	m_list_buffers[2] = { lightsets.buffer, lightsets.offset, ls_bytes };
++#if defined(__ANDROID__)
++	/* Room for every instance of every mesh twice (a list may be drawn
++	 * again); more if that is not enough (more_draws) */
++	uint64_t instances = 0;
++	for (unsigned vpi = 0; vpi < ODIN_VIEWPORTS; vpi++)
++		for (unsigned pt = 0; pt < ODIN_POLYTYPES; pt++)
++			for (uint32_t i = 0; i < list.num_meshes[vpi][pt]; i++)
++				instances += std::max<uint32_t>(list.mesh_list[vpi][pt][i].num_instances, 1);
++	m_pending.clear();
++	m_draws_used = 0;
++	m_draws_room = static_cast<uint32_t>(std::min<uint64_t>(instances * 2 + 256, 1u << 20));
++	m_draws = m_card.stage(VkDeviceSize{ m_draws_room } * sizeof(MeshPush), align);
++#endif
++	write_list_set();
+ 
+ 	m_collecting = false;
+ 	m_pass.depth_write = true;
+@@ -564,6 +641,79 @@ VkDrawing::begin_scene(const odin_display_list_t &list, const SceneDebug &debug)
+ 	open_scene(true);
+ }
+ 
++/* The set of the list: its views, modelviews and lightsets, and on Android
++ * the table of the draws */
++void
++VkDrawing::write_list_set()
++{
++	VkDescriptorBufferInfo buffers[4] = { m_list_buffers[0], m_list_buffers[1], m_list_buffers[2], {} };
++	uint32_t count = 3;
++#if defined(__ANDROID__)
++	buffers[3] = { m_draws.buffer, m_draws.offset, VkDeviceSize{ m_draws_room } * sizeof(MeshPush) };
++	count = 4;
++#endif
++	VkWriteDescriptorSet writes[4];
++
++	m_list_set = m_card.frame_set(m_list_layout);
++	for (uint32_t i = 0; i < count; i++)
++		writes[i] = { VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET, nullptr, m_list_set, i, 0, 1,
++		              VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, nullptr, &buffers[i], nullptr };
++	m_fn.vkUpdateDescriptorSets(m_card.device(), count, writes, 0, nullptr);
++}
++
++/* Android: the draws waiting, sent in one indirect call (each its own
++ * instance number, which reads its row of the table); before any other
++ * command, so that they keep their place */
++void
++VkDrawing::flush_draws()
++{
++#if defined(__ANDROID__)
++	if (m_pending.empty())
++		return;
++
++	const VkCommandBuffer cb = m_card.commands();
++
++	if (m_card.multi_draw()) {
++		const uint32_t most = std::max<uint32_t>(m_card.limits().maxDrawIndirectCount, 1);
++
++		for (size_t at = 0; at < m_pending.size(); at += most) {
++			const uint32_t n = static_cast<uint32_t>(std::min<size_t>(most, m_pending.size() - at));
++			const VkDeviceSize bytes = VkDeviceSize{ n } * sizeof(VkDrawIndexedIndirectCommand);
++			const vk::Slice commands = m_card.stage(bytes, 4);
++
++			std::memcpy(commands.bytes, m_pending.data() + at, bytes);
++			m_fn.vkCmdDrawIndexedIndirect(cb, commands.buffer, commands.offset, n,
++			                              sizeof(VkDrawIndexedIndirectCommand));
++			g_draw_counts.calls++;
++		}
++	} else {
++		for (const VkDrawIndexedIndirectCommand &c : m_pending) {
++			m_fn.vkCmdDrawIndexed(cb, c.indexCount, 1, c.firstIndex, 0, c.firstInstance);
++			g_draw_counts.calls++;
++		}
++	}
++	m_pending.clear();
++#endif
++}
++
++/* Android: the table full, a larger one in a new set of the list */
++void
++VkDrawing::more_draws()
++{
++#if defined(__ANDROID__)
++	const VkDeviceSize align = std::max<VkDeviceSize>(m_card.limits().minStorageBufferOffsetAlignment, 16);
++
++	flush_draws();
++	m_draws_room *= 2;
++	m_draws_used = 0;
++	m_draws = m_card.stage(VkDeviceSize{ m_draws_room } * sizeof(MeshPush), align);
++	write_list_set();
++	if (m_open)
++		m_fn.vkCmdBindDescriptorSets(m_card.commands(), VK_PIPELINE_BIND_POINT_GRAPHICS, m_mesh_layout, 0, 1,
++		                             &m_list_set, 0, nullptr);
++#endif
++}
++
+ /* The scene drawn into, emptied first or as it was left: every state of the
+  * meshes set again (the commands may have been sent since, see count_now) */
+ void
+@@ -601,6 +751,7 @@ VkDrawing::open_scene(bool clear, bool clear_depth)
  	                                 nullptr };
  
  	m_fn.vkCmdBeginRendering(cb, &rendering);
@@ -1379,7 +1724,7 @@ index 81bdb45..0ada786 100644
  	set_scene_state(cb, m_collecting ? m_collect_set : VK_NULL_HANDLE);
  	m_family = NO_FAMILY;
  }
-@@ -636,6 +699,7 @@ VkDrawing::open_family(unsigned family)
+@@ -636,6 +787,7 @@ VkDrawing::open_family(unsigned family)
  	                                 nullptr };
  
  	m_fn.vkCmdBeginRendering(cb, &rendering);
@@ -1387,22 +1732,112 @@ index 81bdb45..0ada786 100644
  	set_scene_state(cb, m_family_set[family]);
  	m_family = family;
  }
-@@ -904,6 +968,7 @@ VkDrawing::draw_mesh(const odin_mesh_t &mesh, const MeshDraw &draw)
+@@ -673,6 +825,7 @@ VkDrawing::close_scene()
+ {
+ 	if (!m_open)
+ 		return;
++	flush_draws();
+ 	m_fn.vkCmdEndRendering(m_card.commands());
+ 	m_open = false;
+ 	if (!m_depth_kept)
+@@ -698,6 +851,7 @@ VkDrawing::use_depth()
+ 
+ 	if (!m_depth_wanted)
+ 		return;
++	flush_draws();
+ 	/* MoltenVK clears the colour too with vkCmdClearAttachments */
+ 	if (!m_open || m_family != NO_FAMILY || m_card.portability_subset()) {
+ 		close_scene();
+@@ -756,8 +910,10 @@ VkDrawing::begin_pass(const PassRules &rules)
+ 	m_pass.alpha_ref = rules.alpha_ref;
+ 	m_pass.depth_bias = rules.depth_bias;
+ 	m_pass.depth_write = rules.depth_write;
+-	if (m_open)
++	if (m_open) {
++		flush_draws();
+ 		m_fn.vkCmdSetDepthWriteEnable(m_card.commands(), rules.depth_write && !m_collecting ? VK_TRUE : VK_FALSE);
++	}
+ }
+ 
+ void
+@@ -833,6 +989,7 @@ VkDrawing::set_view(const odin_mesh_t &mesh)
+ 	if (m_scissor_vp_index != mesh.vp_index) {
+ 		const auto [x, y, w, h] = clip_window(vp, m_scale);
+ 
++		flush_draws();
+ 		m_scissor_vp_index = mesh.vp_index;
+ 		if (w >= 0 && h >= 0) {
+ 			const int32_t x0 = std::max(x, 0), y0 = std::max(y, 0);
+@@ -860,6 +1017,7 @@ VkDrawing::bind_texture(const MeshDraw &draw)
+ 		const VkDescriptorSet set = found != m_textures.end() ? found->second.set.set : m_none_set.set;
+ 
+ 		m_bound_texture = draw.texture.id;
++		flush_draws();
+ 		m_fn.vkCmdBindDescriptorSets(cb, VK_PIPELINE_BIND_POINT_GRAPHICS, m_mesh_layout, 1, 1, &set, 0, nullptr);
+ 	}
+ 	if (draw.texture.id && m_bound_sampler != draw.sampler.id) {
+@@ -867,6 +1025,7 @@ VkDrawing::bind_texture(const MeshDraw &draw)
+ 		const VkDescriptorSet set = found != m_samplers.end() ? found->second.set.set : m_nearest_set.set;
+ 
+ 		m_bound_sampler = draw.sampler.id;
++		flush_draws();
+ 		m_fn.vkCmdBindDescriptorSets(cb, VK_PIPELINE_BIND_POINT_GRAPHICS, m_mesh_layout, 2, 1, &set, 0, nullptr);
+ 	}
+ }
+@@ -902,8 +1061,10 @@ VkDrawing::draw_mesh(const odin_mesh_t &mesh, const MeshDraw &draw)
+ 	const VkCommandBuffer cb = m_card.commands();
+ 	const VkPipeline p = pipeline(variant, draw.blend);
  	if (p != m_bound_pipeline) {
++		flush_draws();
  		m_bound_pipeline = p;
  		m_fn.vkCmdBindPipeline(cb, VK_PIPELINE_BIND_POINT_GRAPHICS, p);
 +		g_draw_counts.pipelines++;
  	}
  	set_view(mesh);
  	if (variant.has_texture)
-@@ -942,6 +1007,7 @@ VkDrawing::draw_mesh(const odin_mesh_t &mesh, const MeshDraw &draw)
+@@ -939,9 +1100,22 @@ VkDrawing::draw_mesh(const odin_mesh_t &mesh, const MeshDraw &draw)
+ 		if (m_debug.log)
+ 			log("mv  = [%u+%u] %s", mesh.mv_index, i,
+ 			    odin_modelview_str(mv == m_identity ? &IDENTITY : &m_list->mv_list[mv]));
++#if defined(__ANDROID__)
++		/* A row of the table, and the draw added to the run waiting */
++		if (m_draws_used == m_draws_room)
++			more_draws();
++		std::memcpy(m_draws.bytes + sizeof(MeshPush) * m_draws_used, &m_push, sizeof(m_push));
++		m_pending.push_back({ mesh.num_tris * 3, 1, mesh.first_index, 0, m_draws_used++ });
++		g_draw_counts.draws++;
++		if (g_draw_counts.one_by_one)
++			flush_draws();
++#else
  		m_fn.vkCmdPushConstants(cb, m_mesh_layout, VK_SHADER_STAGE_VERTEX_BIT | VK_SHADER_STAGE_FRAGMENT_BIT, 0,
  		                        sizeof(m_push), &m_push);
  		m_fn.vkCmdDrawIndexed(cb, mesh.num_tris * 3, 1, mesh.first_index, 0, 0);
 +		g_draw_counts.draws++;
++		g_draw_counts.calls++;
++#endif
  	}
  }
  
+diff --git a/src/odin/host/renderer/hikaru/vk/translucent_vk.cpp b/src/odin/host/renderer/hikaru/vk/translucent_vk.cpp
+index 2d4b1b2..418c619 100644
+--- a/src/odin/host/renderer/hikaru/vk/translucent_vk.cpp
++++ b/src/odin/host/renderer/hikaru/vk/translucent_vk.cpp
+@@ -217,6 +217,7 @@ VkDrawing::end_collect()
+ void
+ VkDrawing::keep_count(unsigned view, unsigned slot)
+ {
++	flush_draws();
+ 	if (!m_card.primitive_ids())
+ 		return;
+ 	const VkCommandBuffer cb = m_card.commands();
+@@ -233,6 +234,7 @@ VkDrawing::keep_count(unsigned view, unsigned slot)
+ uint32_t
+ VkDrawing::count_now(unsigned view, unsigned)
+ {
++	flush_draws();
+ 	if (!m_card.primitive_ids())
+ 		return 0;
+ 	const VkCommandBuffer cb = m_card.commands();
 diff --git a/src/odin/host/ui/folder_dialog.cpp b/src/odin/host/ui/folder_dialog.cpp
 index b1bc982..e9308b3 100644
 --- a/src/odin/host/ui/folder_dialog.cpp
