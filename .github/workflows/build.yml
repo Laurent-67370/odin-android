@@ -1,0 +1,77 @@
+name: Odin Android APK
+
+on:
+  push:
+    branches: ['**']
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+# The runs that publish odin.apk go one after the other, the newest last:
+# a run that ends late no longer puts an older APK back
+concurrency:
+  group: ${{ github.event_name == 'pull_request' && format('odin-android-pr-{0}', github.ref) || 'odin-android-publish' }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+      - name: Tools (glslangValidator for the shaders)
+        run: |
+          sudo apt-get update -q
+          sudo apt-get install -y -q glslang-tools gawk
+      - name: Odin's sources, patched for Android
+        run: |
+          ./fetch-odin.sh
+          echo "ODIN_COMMIT=$(cat odin.version)" >> "$GITHUB_ENV"
+      - name: Signing key (secrets ODIN_KEYSTORE_B64, ODIN_KEYSTORE_PASSWORD)
+        env:
+          KEYSTORE_B64: ${{ secrets.ODIN_KEYSTORE_B64 }}
+        run: |
+          if [ -n "$KEYSTORE_B64" ]; then
+            echo "$KEYSTORE_B64" | base64 -d > "$RUNNER_TEMP/odin-release.p12"
+            echo "ODIN_KEYSTORE=$RUNNER_TEMP/odin-release.p12" >> "$GITHUB_ENV"
+            echo "Signed with the key of the secrets"
+          else
+            echo "::warning::No ODIN_KEYSTORE_B64 secret: the APK is signed with a new debug key, and will not install over the last one"
+          fi
+      - name: Build the APK
+        env:
+          ODIN_KEYSTORE_PASSWORD: ${{ secrets.ODIN_KEYSTORE_PASSWORD }}
+        run: |
+          chmod +x gradlew
+          echo "sdk.dir=$ANDROID_HOME" > local.properties
+          yes | "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" --licenses > /dev/null || true
+          ./gradlew --no-daemon --stacktrace assembleRelease
+      - name: On failure, every native error at once
+        if: failure()
+        run: |
+          ndk=$(ls -d "$ANDROID_HOME"/ndk/* | sort -V | tail -1)
+          cmake -S odin-src -B diag -G Ninja \
+            -DCMAKE_TOOLCHAIN_FILE="$ndk/build/cmake/android.toolchain.cmake" \
+            -DANDROID_ABI=arm64-v8a -DANDROID_PLATFORM=26 -DANDROID_STL=c++_shared \
+            -DODIN_BUNDLED_LIBS=ON -DODIN_NATIVE=OFF -DODIN_LTO=OFF -DODIN_OPT_FLAGS=-O0 \
+            -DGLSLANG=/usr/bin/glslangValidator -DAWK=/usr/bin/awk > /dev/null
+          ninja -C diag -k 0 odin 2>&1 | grep -E 'error:|undefined|FAILED' | sort -u | head -150
+      - uses: actions/upload-artifact@v4
+        with:
+          name: odin-android-apk
+          path: app/build/outputs/apk/release/*.apk
+      - name: Publish the APK as a direct download (release "odin-apk")
+        if: github.event_name != 'pull_request'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          cp app/build/outputs/apk/release/app-release.apk odin.apk
+          gh release delete odin-apk --yes --cleanup-tag || true
+          gh release create odin-apk odin.apk --target "$GITHUB_SHA" \
+            --title "Odin — APK Android" \
+            --notes "Odin (émulateur SEGA Hikaru / Gaelco ATV Track) pour Android ARM64, construit depuis Odin ${ODIN_COMMIT::7} et ${GITHUB_SHA::7}. Téléchargez odin.apk sur le téléphone, ouvrez-le et autorisez l'installation depuis cette source. Placez vos jeux dans le dossier Odin/roms du téléphone."

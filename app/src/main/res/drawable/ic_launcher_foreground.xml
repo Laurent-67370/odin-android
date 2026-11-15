@@ -1,0 +1,10 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Odin's logo, the rune ansuz (dist/odin.svg of Odin) -->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="108dp" android:height="108dp"
+    android:viewportWidth="36" android:viewportHeight="36">
+    <group android:translateX="6" android:translateY="6">
+        <path android:fillColor="#D8AA4C"
+            android:pathData="M8.16,22 L8.16,2 L11.24,2 L15.73,5.69 L14.49,7.48 L11.24,4.92 L11.24,7.84 L15.84,11.61 L14.49,13.57 L11.24,10.98 L11.24,22 Z" />
+    </group>
+</vector>

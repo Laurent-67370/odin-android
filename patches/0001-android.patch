@@ -1,0 +1,1771 @@
+diff --git a/CMakeLists.txt b/CMakeLists.txt
+index e034434..9c3f9c3 100644
+--- a/CMakeLists.txt
++++ b/CMakeLists.txt
+@@ -16,6 +16,12 @@ include(GNUInstallDirs)
+ option(ODIN_NATIVE "Tune for this machine's CPU (-march=native)" ON)
+ option(ODIN_LTO "Link-time optimisation (-flto)" ON)
+ option(ODIN_GLES "Use OpenGL ES for embedded systems" OFF)
++# Android: OpenGL ES (and Vulkan), the program a library SDL's activity loads
++if(ANDROID)
++	set(ODIN_GLES ON CACHE BOOL "Use OpenGL ES for embedded systems" FORCE)
++	# Bionic's PAGE_SIZE macro would stand for Sh4::PAGE_SIZE
++	add_compile_definitions(__BIONIC_NO_PAGE_SIZE_MACRO)
++endif()
+ set(ODIN_OPT_FLAGS "-O3 -fomit-frame-pointer -fno-stack-protector" CACHE STRING
+ 	"Optimisation flags")
+ set(ODIN_PGO "" CACHE STRING "Profile-guided build: generate or use")
+@@ -119,18 +125,25 @@ function(odin_library name folder target)
+ 	message(STATUS "${ARGN}: from 3rdparty/${folder}")
+ endfunction()
+ 
+-if(ODIN_GLES AND NOT (UNIX AND NOT APPLE))
++if(ODIN_GLES AND NOT (UNIX AND NOT APPLE) AND NOT ANDROID)
+ 	message(FATAL_ERROR "ODIN_GLES is for Linux")
+ endif()
+ find_package(PkgConfig QUIET)
+ 
+-set(SDL_SHARED OFF)
+-set(SDL_STATIC ON)
+ set(SDL_TEST_LIBRARY OFF)
+ set(SDL_TESTS OFF)
+ set(SDL_EXAMPLES OFF)
+ set(SDL_INSTALL OFF)
+-odin_library(sdl SDL SDL3::SDL3-static sdl3)
++if(ANDROID)
++	# libSDL3.so, which SDL's activity loads before libmain.so
++	set(SDL_SHARED ON)
++	set(SDL_STATIC OFF)
++	odin_library(sdl SDL SDL3::SDL3-shared sdl3)
++else()
++	set(SDL_SHARED OFF)
++	set(SDL_STATIC ON)
++	odin_library(sdl SDL SDL3::SDL3-static sdl3)
++endif()
+ 
+ set(JANSSON_BUILD_SHARED_LIBS OFF)
+ set(JANSSON_EXAMPLES OFF)
+@@ -180,6 +193,8 @@ target_link_libraries(odin_deps INTERFACE odin_jansson odin_vulkan_headers)
+ if(APPLE)
+ 	target_link_libraries(odin_deps INTERFACE odin_glew "-framework OpenGL")
+ 	set(HOST_WARN_FLAGS -Wno-sign-conversion)
++elseif(ANDROID)
++	target_link_libraries(odin_deps INTERFACE GLESv3 EGL android log)
+ elseif(UNIX AND ODIN_GLES)
+ 	odin_system_only(gles glesv2)
+ 	odin_system_only(x11 x11)
+@@ -221,7 +236,7 @@ set(ODIN_SOURCES
+ 	host/ui/folder_dialog.cpp host/ui/pad_view.cpp
+ 	host/ui/pad_drawings.cpp host/ui/pad_drawings_al2009man.cpp
+ 	host/ui/gun_drawings.cpp
+-	host/input/keyboard.cpp host/app/log_file.cpp
++	host/input/keyboard.cpp host/input/touch_pad.cpp host/app/log_file.cpp
+ 	host/app/version.cpp host/app/hotkeys.cpp host/input/controls.cpp
+ 	host/input/pointers.cpp host/input/wheel_force.cpp host/input/gun_serial.cpp
+ 	host/input/evdev.cpp host/input/rawinput.cpp
+@@ -312,7 +327,12 @@ set_source_files_properties(src/miniz/miniz.c PROPERTIES COMPILE_DEFINITIONS USE
+ set_source_files_properties(src/odin/host/app/zip_crc.cpp PROPERTIES
+ 	COMPILE_OPTIONS "-isystem;${CMAKE_SOURCE_DIR}/src/miniz")
+ 
+-# Vulkan shaders to SPIR-V
++# Vulkan shaders to SPIR-V; on Android the depth of the meshes is taken at
++# their corners (mesh.vert, VERTEX_DEPTH), not written by each fragment
++set(GLSL_EXTRA "")
++if(ANDROID)
++	set(GLSL_EXTRA "echo '#define VERTEX_DEPTH 1'; echo '#define UNIFORM_LISTS 1'; ")
++endif()
+ set(GLSL ${CMAKE_SOURCE_DIR}/src/odin/host/gfx/glsl)
+ set(SPIRV_DIR ${CMAKE_BINARY_DIR}/spirv)
+ file(MAKE_DIRECTORY ${SPIRV_DIR}/glsl)
+@@ -324,10 +344,10 @@ foreach(shader whole_picture.vert blend.frag compose.vert compose.frag present.f
+ 	string(REGEX REPLACE ".*\\." "" stage ${shader})
+ 	set(out ${SPIRV_DIR}/glsl/${shader}.spv)
+ 	if(shader STREQUAL "sort.frag")
+-		set(script "{ echo '#version 450'; echo '#define LISTS_SET 0'; cat \"$2\" \"$3\"; } | \"$0\" -V --stdin -S frag -o \"$1\"")
++		set(script "{ echo '#version 450'; ${GLSL_EXTRA}echo '#define LISTS_SET 0'; cat \"$2\" \"$3\"; } | \"$0\" -V --stdin -S frag -o \"$1\"")
+ 		set(inputs ${GLSL}/fragment_lists.glsl ${GLSL}/${shader})
+ 	else()
+-		set(script "{ echo '#version 450'; cat \"$2\"; } | \"$0\" -V --stdin -S ${stage} -o \"$1\"")
++		set(script "{ echo '#version 450'; ${GLSL_EXTRA}cat \"$2\"; } | \"$0\" -V --stdin -S ${stage} -o \"$1\"")
+ 		set(inputs ${GLSL}/${shader})
+ 	endif()
+ 	add_custom_command(OUTPUT ${out}
+@@ -337,13 +357,13 @@ foreach(shader whole_picture.vert blend.frag compose.vert compose.frag present.f
+ endforeach()
+ set(out ${SPIRV_DIR}/glsl/mesh_collect.frag.spv)
+ add_custom_command(OUTPUT ${out}
+-	COMMAND sh -c "{ echo '#version 450'; echo '#define COLLECT 1'; echo '#define LISTS_SET 3'; cat \"$2\" \"$3\"; } | \"$0\" -V --stdin -S frag -o \"$1\""
++	COMMAND sh -c "{ echo '#version 450'; ${GLSL_EXTRA}echo '#define COLLECT 1'; echo '#define LISTS_SET 3'; cat \"$2\" \"$3\"; } | \"$0\" -V --stdin -S frag -o \"$1\""
+ 		${GLSLANG} ${out} ${GLSL}/fragment_lists.glsl ${GLSL}/mesh.frag
+ 	DEPENDS ${GLSL}/fragment_lists.glsl ${GLSL}/mesh.frag VERBATIM)
+ list(APPEND SPIRV ${out})
+ set(out ${SPIRV_DIR}/glsl/pmx_native.frag.spv)
+ add_custom_command(OUTPUT ${out}
+-	COMMAND sh -c "{ echo '#version 450'; echo '#define NATIVE 1'; cat \"$2\"; } | \"$0\" -V --stdin -S frag -o \"$1\""
++	COMMAND sh -c "{ echo '#version 450'; ${GLSL_EXTRA}echo '#define NATIVE 1'; cat \"$2\"; } | \"$0\" -V --stdin -S frag -o \"$1\""
+ 		${GLSLANG} ${out} ${GLSL}/pmx.frag
+ 	DEPENDS ${GLSL}/pmx.frag VERBATIM)
+ list(APPEND SPIRV ${out})
+@@ -355,14 +375,14 @@ foreach(variant list native_list)
+ 		set(defines "echo '#define NATIVE 1'; echo '#define LIST 1'")
+ 	endif()
+ 	add_custom_command(OUTPUT ${out}
+-		COMMAND sh -c "{ echo '#version 450'; ${defines}; cat \"$2\"; } | \"$0\" -V --stdin -S frag -o \"$1\""
++		COMMAND sh -c "{ echo '#version 450'; ${GLSL_EXTRA}${defines}; cat \"$2\"; } | \"$0\" -V --stdin -S frag -o \"$1\""
+ 			${GLSLANG} ${out} ${GLSL}/pmx.frag
+ 		DEPENDS ${GLSL}/pmx.frag VERBATIM)
+ 	list(APPEND SPIRV ${out})
+ endforeach()
+ set(out ${SPIRV_DIR}/glsl/mesh_families.frag.spv)
+ add_custom_command(OUTPUT ${out}
+-	COMMAND sh -c "{ echo '#version 450'; echo '#define FAMILIES 1'; cat \"$2\"; } | \"$0\" -V --stdin -S frag -o \"$1\""
++	COMMAND sh -c "{ echo '#version 450'; ${GLSL_EXTRA}echo '#define FAMILIES 1'; cat \"$2\"; } | \"$0\" -V --stdin -S frag -o \"$1\""
+ 		${GLSLANG} ${out} ${GLSL}/mesh.frag
+ 	DEPENDS ${GLSL}/mesh.frag VERBATIM)
+ list(APPEND SPIRV ${out})
+@@ -429,8 +449,16 @@ set_source_files_properties(src/odin/host/app/rom_files.cpp PROPERTIES
+ set_source_files_properties(src/odin/host/gfx/host_graphics_vk.cpp PROPERTIES
+ 	COMPILE_DEFINITIONS "${VULKAN_FLAGS}")
+ 
+-add_executable(odin ${ODIN_SOURCES}
+-	$<TARGET_OBJECTS:odin_imgui> $<TARGET_OBJECTS:odin_archive> $<TARGET_OBJECTS:odin_embedded>)
++if(ANDROID)
++	add_library(odin SHARED ${ODIN_SOURCES}
++		$<TARGET_OBJECTS:odin_imgui> $<TARGET_OBJECTS:odin_archive> $<TARGET_OBJECTS:odin_embedded>)
++	set_target_properties(odin PROPERTIES OUTPUT_NAME main)
++	# Pages of 16 KB (Android 15 and later)
++	target_link_options(odin PRIVATE -Wl,-z,max-page-size=16384)
++else()
++	add_executable(odin ${ODIN_SOURCES}
++		$<TARGET_OBJECTS:odin_imgui> $<TARGET_OBJECTS:odin_archive> $<TARGET_OBJECTS:odin_embedded>)
++endif()
+ set_target_properties(odin PROPERTIES CXX_STANDARD 20 CXX_STANDARD_REQUIRED ON CXX_EXTENSIONS OFF
+ 	RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin)
+ target_include_directories(odin PRIVATE src)
+diff --git a/src/odin/host/app/main.cpp b/src/odin/host/app/main.cpp
+index 1a4e66f..2b25c2d 100644
+--- a/src/odin/host/app/main.cpp
++++ b/src/odin/host/app/main.cpp
+@@ -25,7 +25,9 @@
+  * along with Valkyrie.  If not, see <http://www.gnu.org/licenses/>.
+  */
+ 
++#include <algorithm>
+ #include <cstdio>
++#include <functional>
+ #include <cstdlib>
+ #include <cstring>
+ #include <memory>
+@@ -49,6 +51,14 @@
+ #include "odin/host/app/user_files.hpp"
+ #include "odin/host/app/version.hpp"
+ 
++#if defined(__ANDROID__)
++/* SDL's activity calls SDL_main in the library */
++#include <SDL3/SDL_hints.h>
++#include <SDL3/SDL_main.h>
++#include <sched.h>
++#include <unistd.h>
++#endif
++
+ namespace odin {
+ namespace {
+ 
+@@ -267,6 +277,50 @@ games_test_list()
+ 	return next;
+ }
+ 
++#if defined(__ANDROID__)
++/* The board runs on one thread, the drawing on another: both kept off the
++ * slow cores of the phone (big.LITTLE), where Android may put them. The
++ * threads made after this one (drawing, sound) take the same cores. */
++void
++keep_to_fast_cores()
++{
++	const long count = sysconf(_SC_NPROCESSORS_CONF);
++	std::vector<long> speeds;
++
++	for (long cpu = 0; cpu < count && cpu < CPU_SETSIZE; cpu++) {
++		char path[96];
++		long khz = 0;
++
++		std::snprintf(path, sizeof(path), "/sys/devices/system/cpu/cpu%ld/cpufreq/cpuinfo_max_freq", cpu);
++		if (std::FILE *const file = std::fopen(path, "r")) {
++			if (std::fscanf(file, "%ld", &khz) != 1)
++				khz = 0;
++			std::fclose(file);
++		}
++		speeds.push_back(khz);
++	}
++	std::vector<long> tiers(speeds);
++	std::sort(tiers.begin(), tiers.end(), std::greater<long>());
++	tiers.erase(std::unique(tiers.begin(), tiers.end()), tiers.end());
++	tiers.erase(std::remove(tiers.begin(), tiers.end(), 0L), tiers.end());
++	if (tiers.size() < 2)
++		return;
++	/* Two kinds of cores: the big ones; three or more: the two fastest */
++	const long least = tiers.size() >= 3 ? tiers[1] : tiers[0];
++	cpu_set_t set;
++	int kept = 0;
++
++	CPU_ZERO(&set);
++	for (size_t cpu = 0; cpu < speeds.size(); cpu++)
++		if (speeds[cpu] >= least) {
++			CPU_SET(cpu, &set);
++			kept++;
++		}
++	if (sched_setaffinity(0, sizeof(set), &set) == 0)
++		std::printf("cpu: kept to the %d cores of %ld MHz and more\n", kept, least / 1000);
++}
++#endif
++
+ } /* namespace */
+ } /* namespace odin */
+ 
+@@ -276,6 +330,13 @@ main(int argc, char **argv)
+ 	odin::Options options;
+ 	odin::GameList games;
+ 
++#if defined(__ANDROID__)
++	/* The back key comes as a key (the touch pad makes it Escape) */
++	SDL_SetHint(SDL_HINT_ANDROID_TRAP_BACK_BUTTON, "1");
++	/* Either way up, as the phone is held (the lock of the rotation kept):
++	 * the menus and the touch pad lay themselves out for the window */
++	SDL_SetHint(SDL_HINT_ORIENTATIONS, "LandscapeLeft LandscapeRight Portrait");
++#endif
+ 	/* With the OpenGL driver of Intel loaded, a process of Windows ends
+ 	 * without what its buffers still hold: it goes out here. */
+ 	std::atexit([] { std::fflush(nullptr); });
+@@ -291,6 +352,11 @@ main(int argc, char **argv)
+ 	}
+ 	odin::start_log(options);
+ 	odin::print_banner();
++#if defined(__ANDROID__)
++	/* Before the drawing thread, which takes the same cores; after the
++	 * log, which tells them */
++	odin::keep_to_fast_cores();
++#endif
+ 	if (parsed != odin::Parsed::RUN) {
+ 		odin::print_help(argv[0]);
+ 		return parsed == odin::Parsed::HELP_ASKED ? 0 : 1;
+diff --git a/src/odin/host/app/session.cpp b/src/odin/host/app/session.cpp
+index 094c084..af43055 100644
+--- a/src/odin/host/app/session.cpp
++++ b/src/odin/host/app/session.cpp
+@@ -26,6 +26,7 @@
+  */
+ 
+ #include "odin/host/app/session.hpp"
++#include "odin/host/input/touch_pad.hpp"
+ 
+ #include <cstdio>
+ #include <filesystem>
+@@ -481,7 +482,7 @@ Session::frames()
+ 			m_audio->play(m_board.sound(false), m_board.sound(true));
+ 
+ 		/* The bar, or a note alone, over the frame */
+-		const bool bar = m_display.bar_shown(), over = bar || !m_bar.note.empty();
++		const bool bar = m_display.bar_shown(), over = bar || !m_bar.note.empty() || touch_pad_wanted();
+ 
+ 		if (over)
+ 			fill_bar();
+diff --git a/src/odin/host/app/user_files.cpp b/src/odin/host/app/user_files.cpp
+index 6990a0c..c8f98d8 100644
+--- a/src/odin/host/app/user_files.cpp
++++ b/src/odin/host/app/user_files.cpp
+@@ -44,7 +44,7 @@ namespace odin {
+ namespace {
+ 
+ /* The folder of the executable of Odin; empty when it cannot be told */
+-std::string
++[[maybe_unused]] std::string
+ executable_folder()
+ {
+ 	std::error_code error;
+@@ -75,6 +75,39 @@ executable_folder()
+ 
+ } /* namespace */
+ 
++#if defined(__ANDROID__)
++/* Android: the folder the activity chose (shared storage, Odin/), where the
++ * roms, the artwork, the settings and the log are; the data of the APK
++ * (odin-games.json, the filters) unpacked by the activity in its own */
++std::string
++program_folder()
++{
++	return env_text("ODIN_ANDROID_FOLDER");
++}
++
++std::vector<std::string>
++program_data_folders()
++{
++	std::vector<std::string> folders;
++
++	for (const char *variable : { "ODIN_ANDROID_DATA", "ODIN_ANDROID_FOLDER" })
++		if (const std::string folder = env_text(variable); !folder.empty())
++			folders.push_back(folder);
++	return folders;
++}
++
++std::string
++user_data_dir()
++{
++	return program_folder();
++}
++
++std::string
++portable_folder()
++{
++	return program_folder();
++}
++#else
+ std::string
+ program_folder()
+ {
+@@ -130,6 +163,7 @@ portable_folder()
+ 			return folder;
+ 	return {};
+ }
++#endif
+ 
+ std::string
+ odin_data_dir()
+diff --git a/src/odin/host/gfx/gl_common.cpp b/src/odin/host/gfx/gl_common.cpp
+index ddbdf32..5a222d1 100644
+--- a/src/odin/host/gfx/gl_common.cpp
++++ b/src/odin/host/gfx/gl_common.cpp
+@@ -26,6 +26,7 @@
+  */
+ 
+ #include "odin/host/gfx/gl_common.hpp"
++#include "odin/common/env.hpp"
+ 
+ #include <algorithm>
+ #include <cstdio>
+@@ -73,6 +74,10 @@ es_head()
+ 	        "precision highp usampler2D;\nprecision highp image2D;\nprecision highp uimage2D;\n";
+ 	if (!fragment_lists())
+ 		head += "#define PEELING 1\n";
++#if defined(__ANDROID__)
++	/* The depth of the meshes taken at their corners (mesh.vert) */
++	head += "#define VERTEX_DEPTH 1\n";
++#endif
+ 	return head;
+ }
+ #endif
+@@ -201,6 +206,10 @@ fragment_lists()
+ 	static const bool lists = [] {
+ 		GLint buffers = 0;
+ 
++		/* ODIN_GL_PEEL=1: the translucent layers peeled, as without the
++		 * lists (a test: on an Adreno 740 the peeling was the slower) */
++		if (env_flag("ODIN_GL_PEEL"))
++			return false;
+ 		glGetIntegerv(GL_MAX_FRAGMENT_SHADER_STORAGE_BLOCKS, &buffers);
+ 		return buffers > 0 && primitive_ids() && (es_version() >= 32 || has_extension("GL_OES_shader_image_atomic"));
+ 	}();
+diff --git a/src/odin/host/gfx/glsl/mesh.frag b/src/odin/host/gfx/glsl/mesh.frag
+index bcae486..84a0ae9 100644
+--- a/src/odin/host/gfx/glsl/mesh.frag
++++ b/src/odin/host/gfx/glsl/mesh.frag
+@@ -41,8 +41,19 @@ struct light_t {
+ 	vec2 extents;
+ 	vec3 spot;
+ 	vec2 cone;
++#ifdef VULKAN
++	/* Four to a vec4: the same offsets in a uniform block (std140) and a
++	 * storage one (std430), as LightData of scene_vk.cpp */
++	vec4 table4[4];
++#else
+ 	float table[16];
++#endif
+ };
++#ifdef VULKAN
++#define LIGHT_TABLE(l, i) (l).table4[(i) >> 2][(i) & 3]
++#else
++#define LIGHT_TABLE(l, i) (l).table[i]
++#endif
+ 
+ #ifndef FAMILIES
+ #define FAMILIES 0
+@@ -83,12 +94,24 @@ struct view_t {
+ struct lightset_t {
+ 	light_t lights[4];
+ };
++#ifdef UNIFORM_LISTS
++/* Uniform blocks: a phone's card keeps them near its shaders, which read
++ * the lights of each fragment from them (scene_vk.cpp, make_mesh_layout) */
++layout(std140, set = 0, binding = 0) uniform views_t {
++	view_t u_views[8];
++};
++/* The lightset of the mesh alone, at the dynamic offset bound for it */
++layout(std140, set = 0, binding = 2) uniform lightsets_t {
++	lightset_t u_lightset_bound;
++};
++#else
+ layout(std430, set = 0, binding = 0) readonly buffer views_t {
+ 	view_t u_views[];
+ };
+ layout(std430, set = 0, binding = 2) readonly buffer lightsets_t {
+ 	lightset_t u_lightsets[];
+ };
++#endif
+ layout(set = 1, binding = 0) uniform texture2D u_texels;
+ layout(set = 2, binding = 0) uniform sampler u_sampling;
+ #if COLLECT != 0
+@@ -115,7 +138,11 @@ layout(push_constant) uniform mesh_t {
+ 	float u_scale;
+ 	float u_family;
+ };
++#ifdef UNIFORM_LISTS
++#define u_lights u_lightset_bound.lights
++#else
+ #define u_lights u_lightsets[u_lightset].lights
++#endif
+ #define u_ambient u_views[u_view].ambient
+ #define u_texture sampler2D (u_texels, u_sampling)
+ #define u_fog (HAS_FOG != 0 ? u_views[u_view].fog : u_views[u_view].cue)
+@@ -268,7 +295,7 @@ apply_light (inout vec3 diffuse,
+ 	if (type == 2) {
+ 		float where = 15.0 * clamp ((dot (light_direction, normalize (-light.spot)) - light.cone.x) * light.cone.y, 0.0, 1.0);
+ 		int point = min (int (where), 14);
+-		attenuation *= (where > 0.0) ? mix (light.table[point], light.table[point + 1], where - float (point)) : 0.0;
++		attenuation *= (where > 0.0) ? mix (LIGHT_TABLE (light, point), LIGHT_TABLE (light, point + 1), where - float (point)) : 0.0;
+ 	}
+ 
+ 	n_dot_l = dot (normal, light_direction);
+@@ -345,8 +372,12 @@ main (void)
+ 	 * near planes the games send, the projected depth cannot tell apart
+ 	 * surfaces that the cabinets do (the shadow of the AIRTRIX combo
+ 	 * labels lies 0.06 behind them at a depth of 560). */
++#ifdef VERTEX_DEPTH
++	float frag_depth = gl_FragCoord.z;
++#else
+ 	float frag_depth = log2 (1.0 + 1.0 / gl_FragCoord.w) * (1.0 / 24.0);
+ 	gl_FragDepth = frag_depth;
++#endif
+ 
+ #if FAMILIES != 0
+ 	/* In a view with both families of the 101 (depth_bias.hpp), a mesh is
+diff --git a/src/odin/host/gfx/glsl/mesh.vert b/src/odin/host/gfx/glsl/mesh.vert
+index ecbd545..05aaf27 100644
+--- a/src/odin/host/gfx/glsl/mesh.vert
++++ b/src/odin/host/gfx/glsl/mesh.vert
+@@ -38,9 +38,15 @@ struct view_t {
+ 	vec3 fog_color;
+ 	vec3 ambient;
+ };
++#ifdef UNIFORM_LISTS
++layout(std140, set = 0, binding = 0) uniform views_t {
++	view_t u_views[8];
++};
++#else
+ layout(std430, set = 0, binding = 0) readonly buffer views_t {
+ 	view_t u_views[];
+ };
++#endif
+ layout(std430, set = 0, binding = 1) readonly buffer modelviews_t {
+ 	mat4 u_modelviews[];
+ };
+@@ -148,6 +154,13 @@ void main (void) {
+ 	}
+ 	/* The depth bias brings the whole position nearer: same pixel. */
+ 	gl_Position = mul (u_projection, vec4 (p_position.xyz * u_depth_scale, 1.0));
++#ifdef VERTEX_DEPTH
++	/* The logarithm of the eye depth (mesh.frag) at the corners, taken
++	 * straight between them: the fragments keep the depth of the card,
++	 * which tests and drops the hidden ones before shading them (a phone's
++	 * card shades every fragment of a shader that writes its depth) */
++	gl_Position.z = (log2 (1.0 + max (gl_Position.w, 0.0)) * (2.0 / 24.0) - 1.0) * gl_Position.w;
++#endif
+ #ifdef VULKAN
+ 	if (GL_CLIP_SPACE == 0)
+ 		gl_Position.z = (gl_Position.z + gl_Position.w) * 0.5;
+diff --git a/src/odin/host/gfx/host_graphics_vk.cpp b/src/odin/host/gfx/host_graphics_vk.cpp
+index f990e61..67362b2 100644
+--- a/src/odin/host/gfx/host_graphics_vk.cpp
++++ b/src/odin/host/gfx/host_graphics_vk.cpp
+@@ -32,6 +32,7 @@
+ #include "odin/host/gfx/host_graphics.hpp"
+ 
+ #include <algorithm>
++#include <utility>
+ #include <cmath>
+ #include <cstdio>
+ #include <cstring>
+@@ -248,6 +249,18 @@ VkGraphics::make_swapchain()
+ 	m_extent = caps.currentExtent.width != UINT32_MAX ? caps.currentExtent :
+ 	           VkExtent2D{ std::clamp(static_cast<uint32_t>(w), caps.minImageExtent.width, caps.maxImageExtent.width),
+ 	                       std::clamp(static_cast<uint32_t>(h), caps.minImageExtent.height, caps.maxImageExtent.height) };
++	/* Android tells the extent as the screen is mounted (portrait on a
++	 * phone) and turns what it is given by currentTransform, for the program
++	 * to draw already turned. Odin draws the window as it is seen: the
++	 * images of the chain are the window's, and Android turns them */
++	VkSurfaceTransformFlagBitsKHR transform = caps.currentTransform;
++#if defined(__ANDROID__)
++	if (caps.supportedTransforms & VK_SURFACE_TRANSFORM_IDENTITY_BIT_KHR) {
++		transform = VK_SURFACE_TRANSFORM_IDENTITY_BIT_KHR;
++		if (caps.currentTransform & (VK_SURFACE_TRANSFORM_ROTATE_90_BIT_KHR | VK_SURFACE_TRANSFORM_ROTATE_270_BIT_KHR))
++			std::swap(m_extent.width, m_extent.height);
++	}
++#endif
+ 	if (m_extent.width == 0 || m_extent.height == 0)
+ 		return;
+ 	if (!(caps.supportedUsageFlags & VK_IMAGE_USAGE_TRANSFER_DST_BIT))
+@@ -278,7 +291,7 @@ VkGraphics::make_swapchain()
+ 	const VkSwapchainCreateInfoKHR info{ VK_STRUCTURE_TYPE_SWAPCHAIN_CREATE_INFO_KHR, nullptr, 0, m_card->surface(),
+ 	                                     images, format.format, format.colorSpace, m_extent, 1,
+ 	                                     VK_IMAGE_USAGE_TRANSFER_DST_BIT, VK_SHARING_MODE_EXCLUSIVE, 0, nullptr,
+-	                                     caps.currentTransform, alpha, mode, VK_TRUE, VK_NULL_HANDLE };
++	                                     transform, alpha, mode, VK_TRUE, VK_NULL_HANDLE };
+ 	m_card->check(m_fn.vkCreateSwapchainKHR(m_card->device(), &info, nullptr, &m_swapchain), "the swap chain");
+ 
+ 	m_fn.vkGetSwapchainImagesKHR(m_card->device(), m_swapchain, &count, nullptr);
+@@ -340,9 +353,17 @@ VkGraphics::show_window()
+ 	const VkPresentInfoKHR present{ VK_STRUCTURE_TYPE_PRESENT_INFO_KHR, nullptr, 1, &m_drawn[index], 1, &m_swapchain,
+ 	                                &index, nullptr };
+ 	const VkResult result = m_fn.vkQueuePresentKHR(m_card->queue(), &present);
++#if defined(__ANDROID__)
++	/* Suboptimal there only says that Android turns the images itself (the
++	 * identity above, the screen turned); a new size remakes the chain */
++	if (result == VK_ERROR_OUT_OF_DATE_KHR)
++		m_remake = true;
++	else if (result != VK_SUCCESS && result != VK_SUBOPTIMAL_KHR)
++#else
+ 	if (result == VK_SUBOPTIMAL_KHR || result == VK_ERROR_OUT_OF_DATE_KHR)
+ 		m_remake = true;
+ 	else if (result != VK_SUCCESS)
++#endif
+ 		m_card->fatal("showing the window", result);
+ }
+ 
+diff --git a/src/odin/host/gfx/vk_common.cpp b/src/odin/host/gfx/vk_common.cpp
+index 2431dbe..5a9a388 100644
+--- a/src/odin/host/gfx/vk_common.cpp
++++ b/src/odin/host/gfx/vk_common.cpp
+@@ -26,6 +26,7 @@
+ 
+ #include <algorithm>
+ #include <cstdio>
++#include <utility>
+ #include <cstdlib>
+ #include <cstring>
+ #include <optional>
+@@ -572,11 +573,12 @@ Context::make_frames()
+ 
+ 		/* The passes of a frame: a few dozen at most; the lists drawn,
+ 		 * a few */
+-		const VkDescriptorPoolSize sizes[4] = { { VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, 1024 },
++		const VkDescriptorPoolSize sizes[5] = { { VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, 1024 },
+ 			                                { VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, 512 },
+ 			                                { VK_DESCRIPTOR_TYPE_STORAGE_IMAGE, 128 },
+-			                                { VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER, 128 } };
+-		const VkDescriptorPoolCreateInfo descriptors{ VK_STRUCTURE_TYPE_DESCRIPTOR_POOL_CREATE_INFO, nullptr, 0, 256, 4,
++			                                { VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER, 512 },
++			                                { VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER_DYNAMIC, 256 } };
++		const VkDescriptorPoolCreateInfo descriptors{ VK_STRUCTURE_TYPE_DESCRIPTOR_POOL_CREATE_INFO, nullptr, 0, 256, 5,
+ 		                                              sizes };
+ 		check(m_fn.vkCreateDescriptorPool(m_device, &descriptors, nullptr, &frame.descriptors), "a descriptor pool");
+ 	}
+@@ -900,7 +902,29 @@ Context::make_buffer(VkDeviceSize size, VkBufferUsageFlags usage)
+ 	check(m_fn.vkCreateBuffer(m_device, &info, nullptr, &buffer.buffer), "a buffer");
+ 	m_fn.vkGetBufferMemoryRequirements(m_device, buffer.buffer, &needs);
+ 	const VkMemoryPropertyFlags seen = VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT;
+-	uint32_t type = memory_type(needs.memoryTypeBits, seen | VK_MEMORY_PROPERTY_HOST_CACHED_BIT);
++	uint32_t type = UINT32_MAX;
++#if defined(__ANDROID__)
++	/* What the card reads (the vertices, the views and the lights each
++	 * fragment reads, the uploads) in memory the processor writes without
++	 * its cache: a phone's card (Adreno, Mali) reads cached memory through
++	 * the coherence of the processor's caches, slowly. What the processor
++	 * reads back (TRANSFER_DST alone) stays cached. */
++	if (usage & ~VkBufferUsageFlags{ VK_BUFFER_USAGE_TRANSFER_DST_BIT }) {
++		for (uint32_t i = 0; i < m_memory.memoryTypeCount && type == UINT32_MAX; i++) {
++			const VkMemoryPropertyFlags flags = m_memory.memoryTypes[i].propertyFlags;
++
++			if ((needs.memoryTypeBits & (1u << i)) && (flags & seen) == seen &&
++			    !(flags & VK_MEMORY_PROPERTY_HOST_CACHED_BIT))
++				type = i;
++		}
++		static bool told = false;
++		if (!std::exchange(told, true))
++			std::printf("vulkan: buffers the card reads in memory type %u (%s)\n", type,
++			            type == UINT32_MAX ? "none uncached: cached" : "uncached");
++	}
++#endif
++	if (type == UINT32_MAX)
++		type = memory_type(needs.memoryTypeBits, seen | VK_MEMORY_PROPERTY_HOST_CACHED_BIT);
+ 	if (type == UINT32_MAX)
+ 		type = memory_type(needs.memoryTypeBits, seen);
+ 	const VkMemoryAllocateInfo memory{ VK_STRUCTURE_TYPE_MEMORY_ALLOCATE_INFO, nullptr, needs.size, type };
+diff --git a/src/odin/host/input/controls.cpp b/src/odin/host/input/controls.cpp
+index c4acd40..2f94263 100644
+--- a/src/odin/host/input/controls.cpp
++++ b/src/odin/host/input/controls.cpp
+@@ -23,6 +23,7 @@
+  */
+ 
+ #include "odin/host/input/controls.hpp"
++#include "odin/host/input/touch_pad.hpp"
+ #include "odin/host/input/wheels.hpp"
+ 
+ #include "odin/host/audio/audio_out.hpp"
+@@ -170,6 +171,7 @@ Controls::Controls(Keyboard &keys, const std::vector<GameControl> &controls, con
+ 		return;
+ 	}
+ 	m_on = true;
++	touch_pad_attach();
+ 	follow_cursor();
+ }
+ 
+@@ -201,6 +203,7 @@ Controls::~Controls()
+ 		SDL_CloseGamepad(pad.handle);
+ 	for (Joy &joy : m_joys)
+ 		SDL_CloseJoystick(joy.handle);
++	touch_pad_detach();
+ 	SDL_QuitSubSystem(SDL_INIT_GAMEPAD);
+ }
+ 
+diff --git a/src/odin/host/input/evdev.cpp b/src/odin/host/input/evdev.cpp
+index d01c7d4..ae0550d 100644
+--- a/src/odin/host/input/evdev.cpp
++++ b/src/odin/host/input/evdev.cpp
+@@ -32,7 +32,7 @@
+ #include "odin/host/input/pointer_names.hpp"
+ #include "odin/host/input/seats.hpp"
+ 
+-#ifdef __linux__
++#if defined(__linux__) && !defined(__ANDROID__)
+ 
+ #include <algorithm>
+ #include <array>
+diff --git a/src/odin/host/input/pointers.cpp b/src/odin/host/input/pointers.cpp
+index 3cad3b1..b54f8d8 100644
+--- a/src/odin/host/input/pointers.cpp
++++ b/src/odin/host/input/pointers.cpp
+@@ -27,7 +27,7 @@
+ 
+ #include "odin/host/input/pointers.hpp"
+ 
+-#if !defined(__linux__) && !defined(_WIN32)
++#if (!defined(__linux__) && !defined(_WIN32)) || defined(__ANDROID__)
+ 
+ namespace odin {
+ 
+diff --git a/src/odin/host/input/touch_pad.cpp b/src/odin/host/input/touch_pad.cpp
+new file mode 100644
+index 0000000..cbed917
+--- /dev/null
++++ b/src/odin/host/input/touch_pad.cpp
+@@ -0,0 +1,465 @@
++/*
++ *  ██████╗ ██████╗ ██╗███╗   ██╗
++ * ██╔═══██╗██╔══██╗██║████╗  ██║
++ * ██║   ██║██║  ██║██║██╔██╗ ██║
++ * ██║   ██║██║  ██║██║██║╚██╗██║
++ * ╚██████╔╝██████╔╝██║██║ ╚████║
++ *  ╚═════╝ ╚═════╝ ╚═╝╚═╝  ╚═══╝
++ *
++ * Copyright (C) 2026 Réda Chérif-Touil
++ *
++ * This program is free software: you can redistribute it and/or modify
++ * it under the terms of the GNU General Public License as published by
++ * the Free Software Foundation, either version 3 of the License, or
++ * (at your option) any later version.
++ *
++ * This program is distributed in the hope that it will be useful,
++ * but WITHOUT ANY WARRANTY; without even the implied warranty of
++ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
++ * GNU General Public License for more details.
++ *
++ * You should have received a copy of the GNU General Public License
++ * along with this program.  If not, see <http://www.gnu.org/licenses/>.
++ */
++
++#include "odin/host/input/touch_pad.hpp"
++
++#include <algorithm>
++#include <array>
++#include <atomic>
++#include <cmath>
++#include <cstdio>
++#include <mutex>
++
++#include <SDL3/SDL.h>
++
++#include "imgui/imgui.h"
++
++namespace odin {
++
++namespace {
++
++/* What a finger may hold */
++enum Part : int {
++	NOTHING = -1,
++	STICK = 0,
++	BUTTON_A, BUTTON_B, BUTTON_X, BUTTON_Y,
++	SHOULDER_L, SHOULDER_R, TRIGGER_L, TRIGGER_R,
++	START, COIN, MENU,
++	PARTS
++};
++
++constexpr const char *LABELS[PARTS] = { "", "A", "B", "X", "Y", "LB", "RB", "LT", "RT", "START", "COIN", "MENU" };
++
++/* The SDL button each part presses (none for the stick and the triggers) */
++constexpr int BUTTONS[PARTS] = {
++	-1,
++	SDL_GAMEPAD_BUTTON_SOUTH, SDL_GAMEPAD_BUTTON_EAST, SDL_GAMEPAD_BUTTON_WEST, SDL_GAMEPAD_BUTTON_NORTH,
++	SDL_GAMEPAD_BUTTON_LEFT_SHOULDER, SDL_GAMEPAD_BUTTON_RIGHT_SHOULDER, -1, -1,
++	SDL_GAMEPAD_BUTTON_START, SDL_GAMEPAD_BUTTON_BACK, SDL_GAMEPAD_BUTTON_GUIDE,
++};
++
++/* A round or a rounded box, in the points of the window */
++struct Shape {
++	float x = 0, y = 0;	/* centre */
++	float w = 0, h = 0;	/* a round when h is 0: w its radius */
++
++	bool round() const { return h <= 0.0f; }
++	bool hit(float px, float py, float slack) const
++	{
++		if (round())
++			return std::hypot(px - x, py - y) <= w * slack;
++		return std::fabs(px - x) <= w * 0.5f * slack && std::fabs(py - y) <= h * 0.5f * slack;
++	}
++};
++
++struct Finger {
++	SDL_FingerID id = 0;
++	Part part = NOTHING;
++	float x = 0, y = 0;	/* points */
++};
++
++/* Shared between the thread that sends the touches (Android's) and the one
++ * that runs Odin */
++struct State {
++	std::mutex mutex;
++	std::array<Finger, 10> fingers{};
++	std::array<Shape, PARTS> shapes{};
++	float room_w = 0, room_h = 0;	/* the window, in points, when drawn */
++	SDL_JoystickID id = 0;
++	int users = 0;	/* the Controls that plugged it */
++	bool watching = false;
++	/* The touch that came as the mouse began on the pad: its mouse events
++	 * are the pad's */
++	bool mouse_taken = false;
++};
++
++State g_state;
++std::atomic<Uint64> g_drawn_ns{ 0 };
++std::atomic<bool> g_hidden{ false };
++std::atomic<float> g_fps{ 0.0f };
++
++constexpr Uint64 SHOWN_NS = 250'000'000;
++
++bool
++shown()
++{
++	const Uint64 drawn = g_drawn_ns.load();
++
++	return drawn && SDL_GetTicksNS() - drawn < SHOWN_NS && !g_hidden.load();
++}
++
++/* The parts laid out for a window of w by h points, landscape or not */
++void
++lay_out(std::array<Shape, PARTS> &s, float w, float h)
++{
++	const float u = std::min(w, h);
++	const float stick = 0.16f * u, button = 0.075f * u, gap = 0.135f * u;
++	const float face_x = w - 0.24f * u, face_y = h - 0.30f * u;
++
++	s[STICK] = { 0.25f * u, h - 0.28f * u, stick, 0 };
++	s[BUTTON_A] = { face_x, face_y + gap, button, 0 };
++	s[BUTTON_B] = { face_x + gap, face_y, button, 0 };
++	s[BUTTON_X] = { face_x - gap, face_y, button, 0 };
++	s[BUTTON_Y] = { face_x, face_y - gap, button, 0 };
++
++	const float bw = 0.22f * u, bh = 0.10f * u, top = 0.10f * u;
++
++	s[TRIGGER_L] = { 0.04f * u + bw * 0.5f, top + bh * 0.5f, bw, bh };
++	s[SHOULDER_L] = { 0.04f * u + bw * 0.5f, top + bh * 1.75f, bw, bh };
++	s[TRIGGER_R] = { w - 0.04f * u - bw * 0.5f, top + bh * 0.5f, bw, bh };
++	s[SHOULDER_R] = { w - 0.04f * u - bw * 0.5f, top + bh * 1.75f, bw, bh };
++
++	const float sw = 0.17f * u, sh = 0.075f * u;
++
++	s[COIN] = { w * 0.5f - sw * 0.65f, h - 0.07f * u, sw, sh };
++	s[START] = { w * 0.5f + sw * 0.65f, h - 0.07f * u, sw, sh };
++	s[MENU] = { w * 0.5f, 0.06f * u, sw, sh };
++}
++
++/* The part under a point; the stick reaches further than it is drawn */
++Part
++part_at(const std::array<Shape, PARTS> &s, float x, float y)
++{
++	for (int p = BUTTON_A; p < PARTS; p++)
++		if (s[static_cast<size_t>(p)].hit(x, y, 1.15f))
++			return static_cast<Part>(p);
++	if (s[STICK].hit(x, y, 1.7f))
++		return STICK;
++	return NOTHING;
++}
++
++Finger *
++finger_of(SDL_FingerID id)
++{
++	for (Finger &f : g_state.fingers)
++		if (f.part != NOTHING && f.id == id)
++			return &f;
++	return nullptr;
++}
++
++/* The touches, as they come (the thread that sends them); the mouse that
++ * a touch on the pad makes swallowed, the back key of Android made the
++ * Escape of Odin's menu */
++bool SDLCALL
++filter(void *, SDL_Event *event)
++{
++	switch (event->type) {
++	case SDL_EVENT_KEY_DOWN:
++	case SDL_EVENT_KEY_UP:
++		if (event->key.key == SDLK_AC_BACK) {
++			event->key.key = SDLK_ESCAPE;
++			event->key.scancode = SDL_SCANCODE_ESCAPE;
++		}
++		return true;
++	case SDL_EVENT_FINGER_DOWN:
++	case SDL_EVENT_FINGER_MOTION:
++	case SDL_EVENT_FINGER_UP:
++	case SDL_EVENT_FINGER_CANCELED: {
++		if (event->tfinger.touchID == SDL_MOUSE_TOUCHID)
++			return true;
++
++		const std::lock_guard<std::mutex> lock(g_state.mutex);
++		const float x = event->tfinger.x * g_state.room_w, y = event->tfinger.y * g_state.room_h;
++		Finger *f = finger_of(event->tfinger.fingerID);
++
++		if (event->type == SDL_EVENT_FINGER_DOWN) {
++			const Part part = shown() ? part_at(g_state.shapes, x, y) : NOTHING;
++
++			if (part == NOTHING || f)
++				return true;
++			for (Finger &free : g_state.fingers)
++				if (free.part == NOTHING) {
++					free = { event->tfinger.fingerID, part, x, y };
++					break;
++				}
++		} else if (f && event->type == SDL_EVENT_FINGER_MOTION) {
++			f->x = x;
++			f->y = y;
++			/* A finger slides from button to button, not off the stick */
++			if (f->part != STICK) {
++				const Part part = part_at(g_state.shapes, x, y);
++
++				if (part != NOTHING && part != STICK)
++					f->part = part;
++			}
++		} else if (f) {
++			f->part = NOTHING;
++		}
++		return true;
++	}
++	case SDL_EVENT_MOUSE_BUTTON_DOWN:
++	case SDL_EVENT_MOUSE_BUTTON_UP:
++	case SDL_EVENT_MOUSE_MOTION: {
++		if (event->type == SDL_EVENT_MOUSE_MOTION ? event->motion.which != SDL_TOUCH_MOUSEID :
++		                                            event->button.which != SDL_TOUCH_MOUSEID)
++			return true;
++
++		const std::lock_guard<std::mutex> lock(g_state.mutex);
++
++		if (event->type == SDL_EVENT_MOUSE_BUTTON_DOWN)
++			g_state.mouse_taken = shown() && part_at(g_state.shapes, event->button.x, event->button.y) != NOTHING;
++		const bool taken = g_state.mouse_taken;
++		if (event->type == SDL_EVENT_MOUSE_BUTTON_UP)
++			g_state.mouse_taken = false;
++		return !taken;
++	}
++	default:
++		return true;
++	}
++}
++
++/* The fingers given to the pad (Odin's thread, as SDL updates the
++ * joysticks) */
++void SDLCALL
++update(void *)
++{
++	std::array<bool, SDL_GAMEPAD_BUTTON_COUNT> buttons{};
++	float stick_x = 0, stick_y = 0;
++	bool trigger_l = false, trigger_r = false;
++	SDL_JoystickID id;
++	{
++		const std::lock_guard<std::mutex> lock(g_state.mutex);
++		const bool on = shown();
++
++		id = g_state.id;
++		for (Finger &f : g_state.fingers) {
++			if (f.part == NOTHING)
++				continue;
++			if (!on) {
++				f.part = NOTHING;
++				continue;
++			}
++			if (f.part == STICK) {
++				const Shape &s = g_state.shapes[STICK];
++				float dx = (f.x - s.x) / s.w, dy = (f.y - s.y) / s.w;
++				const float length = std::hypot(dx, dy);
++
++				if (length > 1.0f) {
++					dx /= length;
++					dy /= length;
++				}
++				stick_x = dx;
++				stick_y = dy;
++			} else if (f.part == TRIGGER_L) {
++				trigger_l = true;
++			} else if (f.part == TRIGGER_R) {
++				trigger_r = true;
++			} else if (BUTTONS[f.part] >= 0) {
++				buttons[static_cast<size_t>(BUTTONS[f.part])] = true;
++			}
++		}
++	}
++	SDL_Joystick *const joystick = SDL_GetJoystickFromID(id);
++
++	if (!joystick)
++		return;
++	/* Hidden while another gamepad is plugged in, looked at twice a second */
++	static Uint64 looked = 0;
++	if (const Uint64 now = SDL_GetTicksNS(); now - looked > 500'000'000) {
++		int count = 0;
++		bool other = false;
++
++		looked = now;
++		if (SDL_JoystickID *const pads = SDL_GetGamepads(&count)) {
++			for (int i = 0; i < count; i++)
++				other = other || (pads[i] != id && !SDL_IsJoystickVirtual(pads[i]));
++			SDL_free(pads);
++		}
++		g_hidden = other;
++	}
++	const auto axis = [](float v) { return static_cast<Sint16>(std::clamp(v, -1.0f, 1.0f) * 32767.0f); };
++
++	SDL_SetJoystickVirtualAxis(joystick, SDL_GAMEPAD_AXIS_LEFTX, axis(stick_x));
++	SDL_SetJoystickVirtualAxis(joystick, SDL_GAMEPAD_AXIS_LEFTY, axis(stick_y));
++	SDL_SetJoystickVirtualAxis(joystick, SDL_GAMEPAD_AXIS_LEFT_TRIGGER, trigger_l ? 32767 : 0);
++	SDL_SetJoystickVirtualAxis(joystick, SDL_GAMEPAD_AXIS_RIGHT_TRIGGER, trigger_r ? 32767 : 0);
++	for (int b = 0; b < SDL_GAMEPAD_BUTTON_COUNT; b++)
++		SDL_SetJoystickVirtualButton(joystick, b, buttons[static_cast<size_t>(b)]);
++}
++
++} /* namespace */
++
++bool
++touch_pad_wanted()
++{
++#if defined(__ANDROID__)
++	return !SDL_GetHintBoolean("ODIN_NO_TOUCH_PAD", false) && !SDL_getenv("ODIN_NO_TOUCH_PAD");
++#else
++	return SDL_getenv("ODIN_TOUCH_PAD") != nullptr;
++#endif
++}
++
++void
++touch_pad_attach()
++{
++	if (!touch_pad_wanted())
++		return;
++
++	const std::lock_guard<std::mutex> lock(g_state.mutex);
++
++	if (!g_state.watching) {
++		SDL_SetEventFilter(filter, nullptr);
++		g_state.watching = true;
++	}
++	if (g_state.users++ > 0 && g_state.id)
++		return;
++
++	SDL_VirtualJoystickDesc desc;
++
++	SDL_INIT_INTERFACE(&desc);
++	desc.type = SDL_JOYSTICK_TYPE_GAMEPAD;
++	desc.naxes = SDL_GAMEPAD_AXIS_COUNT;
++	desc.nbuttons = SDL_GAMEPAD_BUTTON_COUNT;
++	desc.axis_mask = (1u << SDL_GAMEPAD_AXIS_LEFTX) | (1u << SDL_GAMEPAD_AXIS_LEFTY) |
++	                 (1u << SDL_GAMEPAD_AXIS_LEFT_TRIGGER) | (1u << SDL_GAMEPAD_AXIS_RIGHT_TRIGGER);
++	desc.button_mask = (1u << SDL_GAMEPAD_BUTTON_SOUTH) | (1u << SDL_GAMEPAD_BUTTON_EAST) |
++	                   (1u << SDL_GAMEPAD_BUTTON_WEST) | (1u << SDL_GAMEPAD_BUTTON_NORTH) |
++	                   (1u << SDL_GAMEPAD_BUTTON_BACK) | (1u << SDL_GAMEPAD_BUTTON_GUIDE) |
++	                   (1u << SDL_GAMEPAD_BUTTON_START) | (1u << SDL_GAMEPAD_BUTTON_LEFT_SHOULDER) |
++	                   (1u << SDL_GAMEPAD_BUTTON_RIGHT_SHOULDER);
++	desc.name = "Odin touch pad";
++	desc.Update = update;
++	g_state.id = SDL_AttachVirtualJoystick(&desc);
++	if (!g_state.id)
++		std::fprintf(stderr, "ERROR: touch pad: %s\n", SDL_GetError());
++	else
++		std::printf("touch pad: plugged\n");
++}
++
++void
++touch_pad_detach()
++{
++	if (!touch_pad_wanted())
++		return;
++
++	SDL_JoystickID id;
++	{
++		const std::lock_guard<std::mutex> lock(g_state.mutex);
++
++		if (g_state.users > 0 && --g_state.users > 0)
++			return;
++		id = g_state.id;
++		g_state.id = 0;
++		for (Finger &f : g_state.fingers)
++			f.part = NOTHING;
++	}
++	if (id)
++		SDL_DetachVirtualJoystick(id);
++}
++
++void
++touch_pad_speed(float fps)
++{
++	g_fps = fps;
++}
++
++void
++touch_pad_draw()
++{
++	if (!touch_pad_wanted() || !ImGui::GetCurrentContext())
++		return;
++
++	const ImVec2 room = ImGui::GetIO().DisplaySize;
++	std::array<Shape, PARTS> shapes;
++	std::array<bool, PARTS> held{};
++	ImVec2 knob;
++	bool connected;
++	{
++		const std::lock_guard<std::mutex> lock(g_state.mutex);
++
++		g_state.room_w = room.x;
++		g_state.room_h = room.y;
++		lay_out(g_state.shapes, room.x, room.y);
++		shapes = g_state.shapes;
++		connected = g_state.id != 0;
++		knob = { shapes[STICK].x, shapes[STICK].y };
++		for (const Finger &f : g_state.fingers) {
++			if (f.part == NOTHING)
++				continue;
++			held[static_cast<size_t>(f.part)] = true;
++			if (f.part == STICK) {
++				const Shape &s = shapes[STICK];
++				float dx = f.x - s.x, dy = f.y - s.y;
++				const float length = std::hypot(dx, dy);
++
++				if (length > s.w) {
++					dx *= s.w / length;
++					dy *= s.w / length;
++				}
++				knob = { s.x + dx, s.y + dy };
++			}
++		}
++	}
++	if (!connected)
++		return;
++	g_drawn_ns = SDL_GetTicksNS();
++	if (g_hidden.load())
++		return;
++
++	ImDrawList *const draw = ImGui::GetForegroundDrawList();
++	const ImU32 fill = IM_COL32(255, 255, 255, 40), pressed = IM_COL32(255, 255, 255, 110);
++	const ImU32 line = IM_COL32(255, 255, 255, 120), text = IM_COL32(255, 255, 255, 190);
++	const float thick = std::max(1.5f, std::min(room.x, room.y) * 0.004f);
++	ImFont *const font = ImGui::GetFont();
++
++	/* The speed, top left: 60 is full speed */
++	if (const float fps = g_fps.load(); fps > 0.0f) {
++		char speed[32];
++		const float size = std::max(14.0f, std::min(room.x, room.y) * 0.035f);
++
++		std::snprintf(speed, sizeof(speed), "%.0f FPS", static_cast<double>(fps));
++		draw->AddText(font, size, { size * 0.6f, size * 0.4f },
++		              fps >= 58.0f ? IM_COL32(140, 230, 140, 200) : IM_COL32(240, 170, 90, 220), speed);
++	}
++
++	for (int p = 0; p < PARTS; p++) {
++		const Shape &s = shapes[static_cast<size_t>(p)];
++		const ImU32 inside = held[static_cast<size_t>(p)] ? pressed : fill;
++
++		if (p == STICK) {
++			draw->AddCircleFilled({ s.x, s.y }, s.w, IM_COL32(255, 255, 255, 25), 48);
++			draw->AddCircle({ s.x, s.y }, s.w, line, 48, thick);
++			draw->AddCircleFilled(knob, s.w * 0.45f, inside, 32);
++			draw->AddCircle(knob, s.w * 0.45f, line, 32, thick);
++			continue;
++		}
++		float size;
++		if (s.round()) {
++			draw->AddCircleFilled({ s.x, s.y }, s.w, inside, 32);
++			draw->AddCircle({ s.x, s.y }, s.w, line, 32, thick);
++			size = s.w * 0.9f;
++		} else {
++			const ImVec2 a{ s.x - s.w * 0.5f, s.y - s.h * 0.5f }, b{ s.x + s.w * 0.5f, s.y + s.h * 0.5f };
++
++			draw->AddRectFilled(a, b, inside, s.h * 0.35f);
++			draw->AddRect(a, b, line, s.h * 0.35f, 0, thick);
++			size = s.h * 0.55f;
++		}
++		const ImVec2 extent = font->CalcTextSizeA(size, 1e9f, 0.0f, LABELS[p]);
++
++		draw->AddText(font, size, { s.x - extent.x * 0.5f, s.y - extent.y * 0.5f }, text, LABELS[p]);
++	}
++}
++
++} /* namespace odin */
+diff --git a/src/odin/host/input/touch_pad.hpp b/src/odin/host/input/touch_pad.hpp
+new file mode 100644
+index 0000000..d8b10a4
+--- /dev/null
++++ b/src/odin/host/input/touch_pad.hpp
+@@ -0,0 +1,49 @@
++/*
++ *  ██████╗ ██████╗ ██╗███╗   ██╗
++ * ██╔═══██╗██╔══██╗██║████╗  ██║
++ * ██║   ██║██║  ██║██║██╔██╗ ██║
++ * ██║   ██║██║  ██║██║██║╚██╗██║
++ * ╚██████╔╝██████╔╝██║██║ ╚████║
++ *  ╚═════╝ ╚═════╝ ╚═╝╚═╝  ╚═══╝
++ *
++ * Copyright (C) 2026 Réda Chérif-Touil
++ *
++ * This program is free software: you can redistribute it and/or modify
++ * it under the terms of the GNU General Public License as published by
++ * the Free Software Foundation, either version 3 of the License, or
++ * (at your option) any later version.
++ *
++ * This program is distributed in the hope that it will be useful,
++ * but WITHOUT ANY WARRANTY; without even the implied warranty of
++ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
++ * GNU General Public License for more details.
++ *
++ * You should have received a copy of the GNU General Public License
++ * along with this program.  If not, see <http://www.gnu.org/licenses/>.
++ */
++
++#ifndef ODIN_TOUCH_PAD_HPP
++#define ODIN_TOUCH_PAD_HPP
++
++namespace odin {
++
++/* A gamepad on the touch screen (Android; elsewhere with ODIN_TOUCH_PAD=1):
++ * an SDL virtual gamepad that the fingers press, drawn over the game.
++ * Controls sees it as any other pad.
++ *
++ * touch_pad_attach: the pad plugged, once the gamepads are on (Controls);
++ * touch_pad_detach: unplugged, before they go off.
++ * touch_pad_draw: its drawing added to the frame of Dear ImGui being built
++ * over the game; the fingers work it only while it is drawn, and the touches
++ * on it do not reach the game as the mouse.
++ * touch_pad_wanted: whether this host has one. */
++bool touch_pad_wanted();
++void touch_pad_attach();
++void touch_pad_detach();
++void touch_pad_draw();
++/* The frames per second, shown in a corner of the pad (0: none yet) */
++void touch_pad_speed(float fps);
++
++} /* namespace odin */
++
++#endif /* ODIN_TOUCH_PAD_HPP */
+diff --git a/src/odin/host/renderer/hikaru/drawing.hpp b/src/odin/host/renderer/hikaru/drawing.hpp
+index 92dcbe5..7556acd 100644
+--- a/src/odin/host/renderer/hikaru/drawing.hpp
++++ b/src/odin/host/renderer/hikaru/drawing.hpp
+@@ -48,6 +48,14 @@
+ 
+ namespace odin {
+ 
++/* Counted on the drawing thread for ODIN_DRAW_TIMES (renderer_times.cpp):
++ * the renderings begun for the scene and for a family of the 101, the
++ * pipelines bound, the draws */
++struct DrawCounts {
++	uint64_t scenes = 0, families = 0, pipelines = 0, draws = 0;
++};
++inline DrawCounts g_draw_counts;
++
+ namespace vk {
+ class Context;
+ }
+diff --git a/src/odin/host/renderer/hikaru/gl/drawing_gl.cpp b/src/odin/host/renderer/hikaru/gl/drawing_gl.cpp
+index 72f60cd..b2ed22b 100644
+--- a/src/odin/host/renderer/hikaru/gl/drawing_gl.cpp
++++ b/src/odin/host/renderer/hikaru/gl/drawing_gl.cpp
+@@ -31,6 +31,8 @@
+ 
+ #include "odin/host/gfx/gl_common.hpp"
+ 
++#include <SDL3/SDL_video.h>
++
+ namespace odin {
+ 
+ namespace {
+@@ -188,35 +190,43 @@ GlDrawing::make_sampler(const TextureSampling &sampling, unsigned anisotropy)
+ }
+ 
+ #ifdef ODIN_GLES
+-/* OpenGL ES has timestamps only with GL_EXT_disjoint_timer_query */
+-bool
+-GlDrawing::has_stamps() const
+-{
+-	return false;
+-}
++/* OpenGL ES has timestamps only with GL_EXT_disjoint_timer_query, its
++ * functions asked of the driver */
++namespace {
+ 
+-uint32_t
+-GlDrawing::put_stamp()
+-{
+-	return 0;
+-}
++struct TimerQueries {
++	void(GL_APIENTRYP counter)(GLuint, GLenum) = nullptr;
++	void(GL_APIENTRYP result)(GLuint, GLenum, GLuint64 *) = nullptr;
++};
+ 
+-bool
+-GlDrawing::reached(uint32_t)
++const TimerQueries &
++timer_queries()
+ {
+-	return true;
+-}
++	static const TimerQueries queries = [] {
++		TimerQueries q;
+ 
+-uint64_t
+-GlDrawing::stamp_time(uint32_t)
+-{
+-	return 0;
++		if (gl::has_extension("GL_EXT_disjoint_timer_query")) {
++			q.counter = reinterpret_cast<decltype(q.counter)>(SDL_GL_GetProcAddress("glQueryCounterEXT"));
++			q.result = reinterpret_cast<decltype(q.result)>(SDL_GL_GetProcAddress("glGetQueryObjectui64vEXT"));
++		}
++		if (!q.counter || !q.result)
++			q = {};
++		return q;
++	}();
++	return queries;
+ }
+ 
+-void
+-GlDrawing::forget_stamp(uint32_t, bool)
++constexpr GLenum TIMESTAMP_EXT = 0x8E28;
++
++} /* namespace */
++
++bool
++GlDrawing::has_stamps() const
+ {
++	return timer_queries().counter != nullptr;
+ }
++#define glQueryCounter(id, target) timer_queries().counter(id, TIMESTAMP_EXT)
++#define glGetQueryObjectui64v(id, name, at) timer_queries().result(id, name, at)
+ #else
+ bool
+ GlDrawing::has_stamps() const
+@@ -227,6 +237,8 @@ GlDrawing::has_stamps() const
+ 	return bits > 0;
+ }
+ 
++#endif
++
+ uint32_t
+ GlDrawing::put_stamp()
+ {
+@@ -269,6 +281,9 @@ GlDrawing::forget_stamp(uint32_t stamp, bool again)
+ 	else
+ 		glDeleteQueries(1, &stamp);
+ }
++#ifdef ODIN_GLES
++#undef glQueryCounter
++#undef glGetQueryObjectui64v
+ #endif
+ 
+ } /* namespace odin */
+diff --git a/src/odin/host/renderer/hikaru/gl/programs_gl.cpp b/src/odin/host/renderer/hikaru/gl/programs_gl.cpp
+index 1253845..eb1d710 100644
+--- a/src/odin/host/renderer/hikaru/gl/programs_gl.cpp
++++ b/src/odin/host/renderer/hikaru/gl/programs_gl.cpp
+@@ -84,6 +84,12 @@ MeshPrograms::keep_in(const std::string &folder)
+ 		m_driver += text ? reinterpret_cast<const char *>(text) : "";
+ 		m_driver += '\n';
+ 	}
++	/* The programs of the peeling and of the lists share their texts: the
++	 * head that tells them apart is added when they are compiled */
++	m_driver += gl::fragment_lists() ? "lists\n" : "peeling\n";
++#if defined(__ANDROID__)
++	m_driver += "vertex depth\n";
++#endif
+ }
+ 
+ GLuint
+diff --git a/src/odin/host/renderer/hikaru/renderer_times.cpp b/src/odin/host/renderer/hikaru/renderer_times.cpp
+index 91fa8e4..ffc1660 100644
+--- a/src/odin/host/renderer/hikaru/renderer_times.cpp
++++ b/src/odin/host/renderer/hikaru/renderer_times.cpp
+@@ -125,6 +125,15 @@ DrawTimes::end()
+ 		m_sums[i].host_worst = std::max(m_sums[i].host_worst, host[i]);
+ 	}
+ 	m_drawn++;
++	/* Told every 300 frames too, then counted again: a game may end
++	 * without being closed (the app of a phone left) */
++	if (m_drawn >= 300) {
++		tell();
++		g_draw_counts = {};
++		m_sums = {};
++		m_drawn = m_read = m_lists = m_fragments = 0;
++		m_fragments_worst = 0;
++	}
+ }
+ 
+ /* The stamps of a frame, if the card has them all: the last one tells. A
+@@ -210,6 +219,12 @@ DrawTimes::tell() const
+ 	if (m_stamps)
+ 		std::fprintf(stderr, "  %7.3f", ms(card, m_read));
+ 	std::fprintf(stderr, "\n");
++	const double frames = static_cast<double>(m_drawn);
++	std::fprintf(stderr, "drawing:  a frame: %.1f scene renderings, %.1f family renderings, %.1f pipelines bound, "
++	             "%.1f draws\n", static_cast<double>(g_draw_counts.scenes) / frames,
++	             static_cast<double>(g_draw_counts.families) / frames,
++	             static_cast<double>(g_draw_counts.pipelines) / frames,
++	             static_cast<double>(g_draw_counts.draws) / frames);
+ }
+ 
+ } /* namespace odin */
+diff --git a/src/odin/host/renderer/hikaru/vk/drawing_vk.hpp b/src/odin/host/renderer/hikaru/vk/drawing_vk.hpp
+index 2c8c5a7..33dc718 100644
+--- a/src/odin/host/renderer/hikaru/vk/drawing_vk.hpp
++++ b/src/odin/host/renderer/hikaru/vk/drawing_vk.hpp
+@@ -276,6 +276,16 @@ private:
+ 	SceneDebug m_debug{};
+ 	vk::Slice m_vertices{}, m_indices{}, m_views{}, m_lightsets{};
+ 	VkDescriptorSet m_list_set = VK_NULL_HANDLE;
++	/* Android: the buffers of the list copied into memory of the card
++	 * alone, a part for each frame in flight (scene_vk.cpp, to_card) */
++	vk::Buffer m_on_card[vk::Context::FRAMES]{};
++	VkDeviceSize m_on_card_used[vk::Context::FRAMES]{};
++	unsigned m_on_card_frame = ~0u;
++	vk::Slice to_card(const vk::Slice &from, VkDeviceSize size, VkDeviceSize align, VkDeviceSize room = 0,
++	                  VkDeviceSize piece = 0, VkDeviceSize stride = 0);
++	/* Android: the lightsets apart by this, the one bound (scene_vk.cpp) */
++	VkDeviceSize m_ls_stride = 0;
++	uint32_t m_bound_lightset = 0;
+ 	uint32_t m_identity = 0;	/* the modelview of none */
+ 	std::vector<bool> m_view_written, m_lightset_written;
+ 	VkPipeline m_bound_pipeline = VK_NULL_HANDLE;
+diff --git a/src/odin/host/renderer/hikaru/vk/pictures_vk.cpp b/src/odin/host/renderer/hikaru/vk/pictures_vk.cpp
+index a5b195c..a066dee 100644
+--- a/src/odin/host/renderer/hikaru/vk/pictures_vk.cpp
++++ b/src/odin/host/renderer/hikaru/vk/pictures_vk.cpp
+@@ -94,6 +94,9 @@ VkDrawing::~VkDrawing()
+ 	destroy_meshes();
+ 	destroy_lists();
+ 	m_fn.vkDestroyQueryPool(m_card.device(), m_stamps, nullptr);
++	for (vk::Buffer &buffer : m_on_card)
++		if (buffer.buffer)
++			m_card.destroy_buffer(buffer);
+ 	for (vk::Image *image : { &m_state, &m_none, &m_layers[0], &m_layers[1] })
+ 		m_card.destroy_image(*image);
+ 	for (vk::Pass *pass : { &m_blender, &m_compose, &m_presenter })
+diff --git a/src/odin/host/renderer/hikaru/vk/scene_vk.cpp b/src/odin/host/renderer/hikaru/vk/scene_vk.cpp
+index 81bdb45..11845c6 100644
+--- a/src/odin/host/renderer/hikaru/vk/scene_vk.cpp
++++ b/src/odin/host/renderer/hikaru/vk/scene_vk.cpp
+@@ -43,6 +43,7 @@
+ #include <cstddef>
+ #include <cstdio>
+ #include <cstring>
++#include <utility>
+ #include <filesystem>
+ 
+ namespace odin {
+@@ -66,16 +67,27 @@ struct LightData {
+ 	float color[3], ambient;
+ 	float extents[2], pad2[2];
+ 	float spot[3], pad3;
+-	float cone[2];
+-	float table[16];
+-	float pad4[2];
++	float cone[2], pad4[2];
++	float table[16];	/* vec4 table4[4] in glsl/mesh.frag */
+ };
+-static_assert(sizeof(LightData) == 160 && offsetof(LightData, table) == 88);
++static_assert(sizeof(LightData) == 160 && offsetof(LightData, table) == 96);
+ 
+ struct LightsetData {
+ 	LightData lights[4];
+ };
+ 
++/* The views and the lightsets of a list: uniform blocks on Android (the
++ * SPIR-V built with UNIFORM_LISTS, CMakeLists.txt), of their whole size in
++ * glsl/mesh.*; storage buffers elsewhere */
++#if defined(__ANDROID__)
++constexpr VkDescriptorType VIEWS_TYPE = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER;
++constexpr VkDescriptorType LIGHTSETS_TYPE = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER_DYNAMIC;
++constexpr VkDeviceSize VIEWS_BLOCK = sizeof(ViewData) * ODIN_VIEWPORTS;
++#else
++constexpr VkDescriptorType VIEWS_TYPE = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER;
++constexpr VkDescriptorType LIGHTSETS_TYPE = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER;
++#endif
++
+ /* The constants of a variant, by their constant_id in glsl/mesh.* */
+ struct Constants {
+ 	int32_t gl_clip_space;
+@@ -238,10 +250,9 @@ VkDrawing::make_mesh_layout()
+ 
+ 	/* The views, the modelviews, the lightsets */
+ 	const VkDescriptorSetLayoutBinding list[3] = {
+-		{ 0, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, 1, VK_SHADER_STAGE_VERTEX_BIT | VK_SHADER_STAGE_FRAGMENT_BIT,
+-		  nullptr },
++		{ 0, VIEWS_TYPE, 1, VK_SHADER_STAGE_VERTEX_BIT | VK_SHADER_STAGE_FRAGMENT_BIT, nullptr },
+ 		{ 1, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, 1, VK_SHADER_STAGE_VERTEX_BIT, nullptr },
+-		{ 2, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, 1, VK_SHADER_STAGE_FRAGMENT_BIT, nullptr },
++		{ 2, LIGHTSETS_TYPE, 1, VK_SHADER_STAGE_FRAGMENT_BIT, nullptr },
+ 	};
+ 	const VkDescriptorSetLayoutCreateInfo set{ VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_CREATE_INFO, nullptr, 0, 3,
+ 	                                           list };
+@@ -513,6 +524,52 @@ VkDrawing::prepare_program(uint64_t key)
+ 	m_preparing = false;
+ }
+ 
++/* A copy of that part of a staging buffer in memory of the card alone, in
++ * the part of the frame being written (the copy runs before the draws,
++ * which read it after a barrier); a larger buffer when it is full, the
++ * one before kept until the frames that used it are done */
++vk::Slice
++VkDrawing::to_card(const vk::Slice &from, VkDeviceSize size, VkDeviceSize align, VkDeviceSize room,
++                   VkDeviceSize piece, VkDeviceSize stride)
++{
++	const unsigned frame = m_card.frame();
++	vk::Buffer &buffer = m_on_card[frame];
++	VkDeviceSize &used = m_on_card_used[frame];
++
++	if (m_on_card_frame != frame) {
++		m_on_card_frame = frame;
++		used = 0;
++	}
++	VkDeviceSize at = (used + align - 1) / align * align;
++	room = std::max(room, size);
++	if (!buffer.buffer || at + room > buffer.size) {
++		if (buffer.buffer) {
++			vk::Buffer old = buffer;
++			m_card.later([&card = m_card, old]() mutable { card.destroy_buffer(old); });
++		}
++		buffer = m_card.make_card_buffer(std::max<VkDeviceSize>((at + room) * 2, VkDeviceSize{8} << 20),
++		                                 VK_BUFFER_USAGE_TRANSFER_DST_BIT | VK_BUFFER_USAGE_VERTEX_BUFFER_BIT |
++		                                         VK_BUFFER_USAGE_INDEX_BUFFER_BIT |
++		                                         VK_BUFFER_USAGE_STORAGE_BUFFER_BIT |
++		                                         VK_BUFFER_USAGE_UNIFORM_BUFFER_BIT);
++		at = 0;
++	}
++	used = at + room;
++	if (piece && stride != piece) {
++		/* Pieces of `piece` bytes, `stride` apart in the copy */
++		std::vector<VkBufferCopy> copies;
++
++		for (VkDeviceSize i = 0; i * piece < size; i++)
++			copies.push_back({ from.offset + i * piece, at + i * stride, std::min(piece, size - i * piece) });
++		m_fn.vkCmdCopyBuffer(m_card.commands(), from.buffer, buffer.buffer, static_cast<uint32_t>(copies.size()),
++		                     copies.data());
++		return { buffer.buffer, at, nullptr };
++	}
++	const VkBufferCopy copy{ from.offset, at, size };
++	m_fn.vkCmdCopyBuffer(m_card.commands(), from.buffer, buffer.buffer, 1, &copy);
++	return { buffer.buffer, at, nullptr };
++}
++
+ /* The vertices and the indices of the list, its modelviews and the one of
+  * none after them; room for its views and lightsets, written when first
+  * used; the scene and its depth emptied, as scene_gl.cpp does: an
+@@ -545,14 +602,53 @@ VkDrawing::begin_scene(const odin_display_list_t &list, const SceneDebug &debug)
+ 	m_view_written.assign(list.num_vps, false);
+ 	m_lightset_written.assign(list.num_lss, false);
+ 
++	vk::Slice views = m_views, modelviews = mvs, lightsets = m_lightsets;
++#if defined(__ANDROID__)
++	/* A phone's card reads the processor's memory through the coherence
++	 * of its caches (Adreno has no memory both mapped and uncached): at
++	 * every draw the views, modelviews and lights each mesh starts with
++	 * cost it some 40 us. The views and lightsets are written all at once
++	 * here, and the buffers of the list copied into memory of the card
++	 * alone, which the draws read. */
++	static bool told = false;
++	if (!std::exchange(told, true))
++		std::printf("vulkan: the buffers of the lists copied into memory of the card alone\n");
++	for (unsigned i = 0; i < list.num_vps; i++)
++		write_view(i);
++	for (unsigned i = 0; i < list.num_lss; i++)
++		write_lightset(i);
++	close_scene();
++	m_vertices = to_card(m_vertices, vertex_bytes, 16);
++	m_indices = to_card(m_indices, index_bytes, 16);
++	modelviews = to_card(mvs, mv_bytes, align);
++	const VkDeviceSize uniform_align = std::max<VkDeviceSize>(m_card.limits().minUniformBufferOffsetAlignment, 16);
++	views = to_card(m_views, view_bytes, uniform_align, VIEWS_BLOCK);
++	/* Each lightset at its own aligned place: the draws bind the one of
++	 * their mesh by its dynamic offset */
++	m_ls_stride = (sizeof(LightsetData) + uniform_align - 1) / uniform_align * uniform_align;
++	lightsets = to_card(m_lightsets, ls_bytes, uniform_align, m_ls_stride * std::max<uint32_t>(list.num_lss, 1),
++	                    sizeof(LightsetData), m_ls_stride);
++	m_card.memory_barrier(m_card.commands(), VK_PIPELINE_STAGE_2_ALL_TRANSFER_BIT, VK_ACCESS_2_TRANSFER_WRITE_BIT,
++	                      VK_PIPELINE_STAGE_2_VERTEX_INPUT_BIT | VK_PIPELINE_STAGE_2_VERTEX_SHADER_BIT |
++	                              VK_PIPELINE_STAGE_2_GEOMETRY_SHADER_BIT | VK_PIPELINE_STAGE_2_FRAGMENT_SHADER_BIT,
++	                      VK_ACCESS_2_VERTEX_ATTRIBUTE_READ_BIT | VK_ACCESS_2_INDEX_READ_BIT |
++	                              VK_ACCESS_2_SHADER_STORAGE_READ_BIT | VK_ACCESS_2_UNIFORM_READ_BIT);
++#endif
++
+ 	m_list_set = m_card.frame_set(m_list_layout);
+-	const VkDescriptorBufferInfo buffers[3] = { { m_views.buffer, m_views.offset, view_bytes },
+-		                                    { mvs.buffer, mvs.offset, mv_bytes },
+-		                                    { m_lightsets.buffer, m_lightsets.offset, ls_bytes } };
++#if defined(__ANDROID__)
++	const VkDeviceSize view_range = VIEWS_BLOCK, ls_range = sizeof(LightsetData);
++#else
++	const VkDeviceSize view_range = view_bytes, ls_range = ls_bytes;
++#endif
++	const VkDescriptorBufferInfo buffers[3] = { { views.buffer, views.offset, view_range },
++		                                    { modelviews.buffer, modelviews.offset, mv_bytes },
++		                                    { lightsets.buffer, lightsets.offset, ls_range } };
+ 	VkWriteDescriptorSet writes[3];
+ 	for (uint32_t i = 0; i < 3; i++)
+ 		writes[i] = { VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET, nullptr, m_list_set, i, 0, 1,
+-		              VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, nullptr, &buffers[i], nullptr };
++		              i == 0 ? VIEWS_TYPE : i == 1 ? VK_DESCRIPTOR_TYPE_STORAGE_BUFFER : LIGHTSETS_TYPE, nullptr,
++		              &buffers[i], nullptr };
+ 	m_fn.vkUpdateDescriptorSets(m_card.device(), 3, writes, 0, nullptr);
+ 
+ 	m_collecting = false;
+@@ -601,6 +697,7 @@ VkDrawing::open_scene(bool clear, bool clear_depth)
+ 	                                 nullptr };
+ 
+ 	m_fn.vkCmdBeginRendering(cb, &rendering);
++	g_draw_counts.scenes++;
+ 	set_scene_state(cb, m_collecting ? m_collect_set : VK_NULL_HANDLE);
+ 	m_family = NO_FAMILY;
+ }
+@@ -636,6 +733,7 @@ VkDrawing::open_family(unsigned family)
+ 	                                 nullptr };
+ 
+ 	m_fn.vkCmdBeginRendering(cb, &rendering);
++	g_draw_counts.families++;
+ 	set_scene_state(cb, m_family_set[family]);
+ 	m_family = family;
+ }
+@@ -659,8 +757,15 @@ VkDrawing::set_scene_state(VkCommandBuffer cb, VkDescriptorSet set3)
+ 	m_fn.vkCmdBindVertexBuffers(cb, 0, 1, &m_vertices.buffer, &m_vertices.offset);
+ 	m_fn.vkCmdBindIndexBuffer(cb, m_indices.buffer, m_indices.offset, VK_INDEX_TYPE_UINT32);
+ 	const VkDescriptorSet sets[4] = { m_list_set, m_none_set.set, m_nearest_set.set, set3 };
++#if defined(__ANDROID__)
++	const uint32_t lightset_at = 0;
++	m_fn.vkCmdBindDescriptorSets(cb, VK_PIPELINE_BIND_POINT_GRAPHICS, m_mesh_layout, 0, set3 ? 4 : 3, sets, 1,
++	                             &lightset_at);
++	m_bound_lightset = 0;
++#else
+ 	m_fn.vkCmdBindDescriptorSets(cb, VK_PIPELINE_BIND_POINT_GRAPHICS, m_mesh_layout, 0, set3 ? 4 : 3, sets, 0,
+ 	                             nullptr);
++#endif
+ 	m_bound_pipeline = VK_NULL_HANDLE;
+ 	m_bound_texture = 0;
+ 	m_bound_sampler = NONE;
+@@ -904,12 +1009,22 @@ VkDrawing::draw_mesh(const odin_mesh_t &mesh, const MeshDraw &draw)
+ 	if (p != m_bound_pipeline) {
+ 		m_bound_pipeline = p;
+ 		m_fn.vkCmdBindPipeline(cb, VK_PIPELINE_BIND_POINT_GRAPHICS, p);
++		g_draw_counts.pipelines++;
+ 	}
+ 	set_view(mesh);
+ 	if (variant.has_texture)
+ 		bind_texture(draw);
+ 	if (variant.has_lighting && !m_lightset_written[mesh.ls_index])
+ 		write_lightset(mesh.ls_index);
++#if defined(__ANDROID__)
++	/* The lightset of the mesh, at its offset in the uniform block */
++	if (variant.has_lighting && mesh.ls_index != m_bound_lightset) {
++		const uint32_t at = static_cast<uint32_t>(m_ls_stride * mesh.ls_index);
++
++		m_fn.vkCmdBindDescriptorSets(cb, VK_PIPELINE_BIND_POINT_GRAPHICS, m_mesh_layout, 0, 1, &m_list_set, 1, &at);
++		m_bound_lightset = mesh.ls_index;
++	}
++#endif
+ 
+ 	/* The 101 moves the mesh by a fraction of its own depth
+ 	 * (scene_gl.cpp, depth_bias.hpp). */
+@@ -942,6 +1057,7 @@ VkDrawing::draw_mesh(const odin_mesh_t &mesh, const MeshDraw &draw)
+ 		m_fn.vkCmdPushConstants(cb, m_mesh_layout, VK_SHADER_STAGE_VERTEX_BIT | VK_SHADER_STAGE_FRAGMENT_BIT, 0,
+ 		                        sizeof(m_push), &m_push);
+ 		m_fn.vkCmdDrawIndexed(cb, mesh.num_tris * 3, 1, mesh.first_index, 0, 0);
++		g_draw_counts.draws++;
+ 	}
+ }
+ 
+diff --git a/src/odin/host/ui/folder_dialog.cpp b/src/odin/host/ui/folder_dialog.cpp
+index b1bc982..e9308b3 100644
+--- a/src/odin/host/ui/folder_dialog.cpp
++++ b/src/odin/host/ui/folder_dialog.cpp
+@@ -48,7 +48,7 @@ struct Asked {
+ };
+ 
+ /* Read by the picker until it answers */
+-constexpr SDL_DialogFileFilter ARCHIVES[] = { { "MAME game archives (zip, 7z)", "zip;7z" } };
++[[maybe_unused]] constexpr SDL_DialogFileFilter ARCHIVES[] = { { "MAME game archives (zip, 7z)", "zip;7z" } };
+ 
+ /* Where the picker opens: the folder when it is there */
+ const char *
+@@ -100,6 +100,36 @@ FolderDialog::start()
+ 	return true;
+ }
+ 
++#if defined(__ANDROID__)
++/* Android: the pickers of the system answer with content:// addresses, not
++ * paths. Odin reads its folder of the shared storage (Odin/), all files
++ * allowed: the folder asked is the one given, else Odin/roms. */
++void
++FolderDialog::ask(SDL_Window *window, const std::string &from, int asked)
++{
++	(void)window;
++	if (!start())
++		return;
++
++	const char *const at = start_at(from);
++	const char *const odin = SDL_getenv("ODIN_ANDROID_FOLDER");
++	const std::string folder = at ? std::string(at) : std::string(odin ? odin : "") + "/roms";
++	const char *const files[2] = { folder.c_str(), nullptr };
++
++	answered(new Asked{ m_slot, asked }, files, 0);
++}
++
++void
++FolderDialog::ask_archive(SDL_Window *window, const std::string &from, int asked)
++{
++	(void)window;
++	(void)from;
++	if (!start())
++		return;
++	SDL_SetError("on Android, put the archives in the folder Odin/roms of the phone");
++	answered(new Asked{ m_slot, asked }, nullptr, 0);
++}
++#else
+ void
+ FolderDialog::ask(SDL_Window *window, const std::string &from, int asked)
+ {
+@@ -113,6 +143,7 @@ FolderDialog::ask_archive(SDL_Window *window, const std::string &from, int asked
+ 	if (start())
+ 		SDL_ShowOpenFileDialog(answered, new Asked{ m_slot, asked }, window, ARCHIVES, 1, start_at(from), false);
+ }
++#endif
+ 
+ bool
+ FolderDialog::open() const
+diff --git a/src/odin/host/ui/menu_bar.cpp b/src/odin/host/ui/menu_bar.cpp
+index 0282be6..b7307d2 100644
+--- a/src/odin/host/ui/menu_bar.cpp
++++ b/src/odin/host/ui/menu_bar.cpp
+@@ -45,6 +45,7 @@
+ #pragma GCC diagnostic pop
+ #include "odin/machine/chips/card_reader.hpp"
+ #include "odin/host/ui/menu_kit.hpp"
++#include "odin/host/input/touch_pad.hpp"
+ #include "odin/host/app/version.hpp"
+ #include "odin/machine/cabinet/netbd_ring.hpp"
+ 
+@@ -129,6 +130,7 @@ Menu::build_bar(BarState &state)
+ {
+ 	begin_frame(state.theme);
+ 	bar(state);
++	touch_pad_draw();
+ 	ImGui::Render();
+ }
+ 
+@@ -156,6 +158,7 @@ Menu::build_note(BarState &state)
+ 	ImGui::NewFrame();
+ 	close_bar_menus();
+ 	note(state, MenuKit(*m_palette, m_scale));
++	touch_pad_draw();
+ 	ImGui::Render();
+ }
+ 
+diff --git a/src/odin/host/ui/system_fonts.cpp b/src/odin/host/ui/system_fonts.cpp
+index d6b727c..f2e748b 100644
+--- a/src/odin/host/ui/system_fonts.cpp
++++ b/src/odin/host/ui/system_fonts.cpp
+@@ -70,7 +70,7 @@ const std::vector<std::vector<const char *>> WANTED = {
+  * Chinese, Japanese and Korean (Noto Sans CJK, else Droid Sans Fallback,
+  * else WenQuanYi); Thai; Hindi */
+ const std::vector<std::vector<const char *>> WANTED = {
+-	{ "DejaVuSans.ttf", "NotoSans-Regular.ttf" },
++	{ "DejaVuSans.ttf", "NotoSans-Regular.ttf", "Roboto-Regular.ttf" },
+ 	{ "NotoSansCJK-Regular.ttc", "DroidSansFallbackFull.ttf", "DroidSansFallback.ttf", "wqy-microhei.ttc",
+ 	  "wqy-zenhei.ttc" },
+ 	{ "NotoSansThai-Regular.ttf" }, { "NotoSansDevanagari-Regular.ttf" },
+@@ -95,6 +95,9 @@ find_files()
+ 		folders.push_back(std::string(home) + "/Library/Fonts");
+ 	folders.push_back("/Library/Fonts");
+ 	folders.push_back("/System/Library/Fonts");
++#elif defined(__ANDROID__)
++	folders.push_back("/system/fonts");
++	folders.push_back("/product/fonts");
+ #else
+ 	const std::string home = env_text("HOME"), data = env_text("XDG_DATA_HOME");
+ 
+diff --git a/src/odin/host/video/display.cpp b/src/odin/host/video/display.cpp
+index f185cd7..230801a 100644
+--- a/src/odin/host/video/display.cpp
++++ b/src/odin/host/video/display.cpp
+@@ -26,6 +26,7 @@
+  */
+ 
+ #include "odin/host/video/display.hpp"
++#include "odin/host/input/touch_pad.hpp"
+ 
+ #include <algorithm>
+ #include <atomic>
+@@ -689,7 +690,8 @@ Display::build_bar(BarState *bar)
+ 		m_menu->build_bar(*bar);
+ 		return true;
+ 	}
+-	if (bar->note.empty())
++	/* The gamepad of the touch screen is drawn over each frame */
++	if (bar->note.empty() && !touch_pad_wanted())
+ 		return false;
+ 	make_menu();
+ 	m_menu->build_note(*bar);
+@@ -983,6 +985,7 @@ Display::show_speed()
+ 		                   static_cast<double>(now - m_title_since);
+ 
+ 		m_fps = static_cast<float>(fps);
++		touch_pad_speed(m_fps);
+ 		if (!m_message.empty())
+ 			std::snprintf(title, sizeof(title), "%s (%4.1f FPS) [%s]", m_title.c_str(), fps, m_message.c_str());
+ 		else
+diff --git a/src/odin/host/video/x11_window.cpp b/src/odin/host/video/x11_window.cpp
+index 42a24db..d7fcd6d 100644
+--- a/src/odin/host/video/x11_window.cpp
++++ b/src/odin/host/video/x11_window.cpp
+@@ -27,13 +27,13 @@
+ 
+ #include "odin/host/video/x11_window.hpp"
+ 
+-#if !defined(_WIN32) && !defined(__APPLE__)
++#if !defined(_WIN32) && !defined(__APPLE__) && !defined(__ANDROID__)
+ #include <X11/Xlib.h>
+ #endif
+ 
+ namespace odin {
+ 
+-#if !defined(_WIN32) && !defined(__APPLE__)
++#if !defined(_WIN32) && !defined(__APPLE__) && !defined(__ANDROID__)
+ 
+ /* As SDL sends it (SDL_x11window.c): _NET_WM_STATE, remove FULLSCREEN, to
+  * the root window */
