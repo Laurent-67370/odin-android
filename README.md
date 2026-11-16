@@ -12,6 +12,7 @@ https://github.com/Laurent-67370/odin-android/releases/download/odin-apk/odin.ap
 | Point | État |
 |---|---|
 | Air Trix, NASCAR Arcade, Star Wars Racer Arcade | jouables, **60 images/s** (Snapdragon 8 Gen 2), aussi en résolution 2× |
+| Brave Firefighters, Gaelco Football | manette tactile adaptée (visée au doigt, second stick), à essayer |
 | Manette tactile | stick flottant, boutons, gâchettes, vibration, panneau de raccourcis ; en paysage, rangée dans deux colonnes latérales |
 | Format de l'image | 4:3 (borne), 16:9 ou plein écran |
 | Menus | agrandis ×3 en paysage, police Roboto nette |
@@ -82,6 +83,17 @@ par seconde** en course : la carte graphique travaille environ 9 ms sur les
 - **Star Wars Racer Arcade** (deux leviers, un par moteur, comme la borne) : le
   stick tactile pousse les deux moteurs ensemble vers l'avant, et gauche /
   droite donne plus de puissance à un moteur qu'à l'autre pour tourner.
+- **Brave Firefighters** (la lance à incendie se vise) : pas de stick ; un
+  doigt posé **sur l'image** vise à cet endroit et projette l'eau tant qu'il
+  reste posé, en glissant pour suivre le feu. LT donne le brouillard (FOG), RT
+  l'eau sans bouger la visée. Un seul doigt vise à la fois, les autres peuvent
+  tenir les boutons en même temps.
+- **Gaelco Football** : le stick de gauche déplace le joueur, A / B / X sont les
+  boutons A / B / C de la borne, et un **second stick** à droite donne le tir
+  (de côté et vers l'avant) : il flotte sur toute la moitié droite de l'écran,
+  là où il n'y a pas de bouton, et se dessine à côté des boutons A B X Y.
+- Ces adaptations se font d'elles-mêmes selon les commandes du jeu : visée
+  pour un jeu à viseur, second stick pour un jeu qui en a un.
 - **Raccourcis** : le bouton **•••** (à droite de MENU) ouvre un panneau de gros
   boutons pour les touches qu'un téléphone n'a pas : SAVE / LOAD (l'état, F2 /
   F4), PAUSE (P), RESET (Ctrl+R), **TEST** et **SERVICE** (0 / 9, les boutons de
@@ -123,7 +135,9 @@ par seconde** en course : la carte graphique travaille environ 9 ms sur les
   donne une nouvelle fenêtre) ; chaîne d'images refaite seulement quand la
   fenêtre change de taille.
 - `touch_pad.cpp` : la manette tactile, une manette virtuelle SDL dessinée avec
-  Dear ImGui (testable sur PC avec `ODIN_TOUCH_PAD=1`).
+  Dear ImGui (testable sur PC avec `ODIN_TOUCH_PAD=1`) ; dans un jeu à viseur,
+  le doigt sur l'image devient la souris (`touch_pad_aim`), sans stick ; dans
+  un jeu à second stick, un second stick flottant à droite.
 - Vulkan par défaut, comme sur macOS ; le recompilateur ARM64 d'Odin (fait
   pour les Mac Apple Silicon) tourne tel quel. L'émulation reste sur les cœurs
   rapides du processeur.
