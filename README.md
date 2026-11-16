@@ -11,14 +11,19 @@ https://github.com/Laurent-67370/odin-android/releases/download/odin-apk/odin.ap
 
 | Point | État |
 |---|---|
-| Air Trix, NASCAR Arcade | jouables, **60 images/s** (Snapdragon 8 Gen 2), aussi en résolution 2× |
-| Manette tactile | stick flottant, boutons, gâchettes, vibration, panneau de raccourcis |
+| Air Trix, NASCAR Arcade, Star Wars Racer Arcade | jouables, **60 images/s** (Snapdragon 8 Gen 2), aussi en résolution 2× |
+| Manette tactile | stick flottant, boutons, gâchettes, vibration, panneau de raccourcis ; en paysage, rangée dans deux colonnes latérales |
+| Format de l'image | 4:3 (borne), 16:9 ou plein écran |
+| Menus | agrandis ×3 en paysage, police Roboto nette |
 | Portrait / paysage | les deux, bascule en jeu |
 | Quitter puis revenir dans l'app | le jeu reprend (pas d'écran noir) |
 | Mises à jour | par-dessus l'ancienne version (APK signé d'une clé fixe) |
 
 Connu, venant d'Odin lui-même : Air Trix peut planter à l'écran des meilleurs
 scores ([Tovarichtch/Odin#52](https://github.com/Tovarichtch/Odin/issues/52)).
+
+Le portage est présenté à l'auteur d'Odin dans
+[Tovarichtch/Odin#54](https://github.com/Tovarichtch/Odin/issues/54).
 
 ## Installer
 
