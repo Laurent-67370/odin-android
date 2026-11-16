@@ -1043,7 +1043,7 @@ index ea40540..b11bff6 100644
  }
  
 diff --git a/src/odin/host/input/controls.cpp b/src/odin/host/input/controls.cpp
-index c4acd40..8c7b599 100644
+index c4acd40..47f95ad 100644
 --- a/src/odin/host/input/controls.cpp
 +++ b/src/odin/host/input/controls.cpp
 @@ -23,6 +23,7 @@
@@ -1054,7 +1054,7 @@ index c4acd40..8c7b599 100644
  #include "odin/host/input/wheels.hpp"
  
  #include "odin/host/audio/audio_out.hpp"
-@@ -170,6 +171,20 @@ Controls::Controls(Keyboard &keys, const std::vector<GameControl> &controls, con
+@@ -170,6 +171,29 @@ Controls::Controls(Keyboard &keys, const std::vector<GameControl> &controls, con
  		return;
  	}
  	m_on = true;
@@ -1069,13 +1069,22 @@ index c4acd40..8c7b599 100644
 +		const bool twin = analog(Role::STICK_Y) && analog(Role::STICK2_Y) && !analog(Role::STICK_X);
 +
 +		touch_pad_twin_levers(twin);
-+		touch_pad_second_stick(!twin && (analog(Role::STICK2_X) || analog(Role::STICK2_Y)));
++		/* A second stick, analog (Gaelco Football's kick) or its four
++		 * directions (Virtual-On's right lever) */
++		const auto digital = [this](Role role) {
++			return std::any_of(m_game_controls.begin(), m_game_controls.end(),
++			                   [role](const GameControl &c) { return c.role == role && c.player == 0; });
++		};
++		const bool second = analog(Role::STICK2_X) || analog(Role::STICK2_Y) || digital(Role::STICK2_UP) ||
++		                    digital(Role::STICK2_DOWN) || digital(Role::STICK2_LEFT) || digital(Role::STICK2_RIGHT);
++
++		touch_pad_second_stick(!twin && second);
 +		touch_pad_aim_mode(analog(Role::GUN_X) && analog(Role::GUN_Y));
 +	}
  	follow_cursor();
  }
  
-@@ -201,6 +216,7 @@ Controls::~Controls()
+@@ -201,6 +225,7 @@ Controls::~Controls()
  		SDL_CloseGamepad(pad.handle);
  	for (Joy &joy : m_joys)
  		SDL_CloseJoystick(joy.handle);
@@ -1083,7 +1092,7 @@ index c4acd40..8c7b599 100644
  	SDL_QuitSubSystem(SDL_INIT_GAMEPAD);
  }
  
-@@ -534,6 +550,10 @@ Controls::event(const SDL_Event &event)
+@@ -534,6 +559,10 @@ Controls::event(const SDL_Event &event)
  		return false;
  	switch (event.type) {
  	case SDL_EVENT_MOUSE_MOTION: {
@@ -1094,7 +1103,7 @@ index c4acd40..8c7b599 100644
  		/* SDL 3 gives the place in fractions of a pixel; whole pixels, as SDL 2 did */
  		const int x = static_cast<int>(event.motion.x), y = static_cast<int>(event.motion.y);
  		int w = 0, h = 0;
-@@ -551,6 +571,9 @@ Controls::event(const SDL_Event &event)
+@@ -551,6 +580,9 @@ Controls::event(const SDL_Event &event)
  	}
  	case SDL_EVENT_MOUSE_BUTTON_DOWN:
  	case SDL_EVENT_MOUSE_BUTTON_UP: {
@@ -1104,7 +1113,7 @@ index c4acd40..8c7b599 100644
  		const int index = mouse_button_of(event.button.button);
  
  		if (index >= 0)
-@@ -862,6 +885,16 @@ Controls::pad_type(unsigned player) const
+@@ -862,6 +894,16 @@ Controls::pad_type(unsigned player) const
  void
  Controls::update()
  {
