@@ -159,6 +159,13 @@ par seconde** en course : la carte graphique travaille environ 9 ms sur les
   - cache des pipelines écrit dès qu'ils sont prêts (une app Android est
     tuée, jamais fermée).
 
+## Homebrew
+
+Le dossier [`homebrew/`](homebrew/) contient un programme fait maison pour la
+borne SEGA Hikaru : il démarre par le BIOS SEGA comme un vrai jeu, affiche
+par la couche 2D et lit les commandes par le JVS. C'est la base d'un futur jeu
+compatible avec Odin.
+
 ## Construire soi-même
 
 ```sh
