@@ -22,17 +22,69 @@ NAME, TITLE = 'odinhb', 'Odin Homebrew'
 LOAD = 0x8C100000          # where the program runs (link.ld)
 PROG_AT = 0x1000           # where it is in the EPROMs
 CHIP = 2 << 20             # two 2 MB EPROMs, 16 bits each in turn
-SOURCES = ['crt0.S', 'hikaru.c', 'main.c']
+SOURCES = ['crt0.S', 'hikaru.c', 'gfx.c', 'main.c']
+
+
+def font_header(gen):
+    """tools/font5x7.txt as font5x7.h: 7 rows of 5 bits a character"""
+    glyphs, lines = {}, open(os.path.join(HERE, 'tools', 'font5x7.txt')).read().split('\n')
+    lines = [l for l in lines if not l.startswith('# ')]
+    i = 0
+    while i + 7 < len(lines):
+        if len(lines[i]) != 1:
+            i += 1
+            continue
+        rows = lines[i + 1:i + 8]
+        glyphs[lines[i]] = [int(r.replace('#', '1').replace('.', '0'), 2) for r in rows]
+        i += 8
+    first, last = ord(' '), ord('_')
+    out = ['/* Made by build.py from tools/font5x7.txt */', '#include <stdint.h>',
+           '#define FONT_FIRST %d' % first, '#define FONT_LAST %d' % last,
+           'static const uint8_t font5x7[%d][7] = {' % (last - first + 1)]
+    for c in range(first, last + 1):
+        rows = glyphs.get(chr(c), glyphs['?'])
+        out.append('\t{ %s },\t/* %r */' % (', '.join('0x%02X' % r for r in rows), chr(c)))
+    out.append('};')
+    open(os.path.join(gen, 'font5x7.h'), 'w').write('\n'.join(out) + '\n')
+
+
+def sprites_source(gen):
+    """assets/*.png as sprites.h and sprites.c: ABGR1555, 0 where transparent"""
+    from PIL import Image
+    names = sorted(f[:-4] for f in os.listdir(os.path.join(HERE, 'assets')) if f.endswith('.png'))
+    h = ['/* Made by build.py from assets/ */', '#include "gfx.h"']
+    c = ['/* Made by build.py from assets/ */', '#include "sprites.h"']
+    for n in names:
+        im = Image.open(os.path.join(HERE, 'assets', n + '.png')).convert('RGBA')
+        px = []
+        raw = im.tobytes()
+        for i in range(0, len(raw), 4):
+            r, g, b, a = raw[i:i + 4]
+            px.append(0 if a < 128 else 0x8000 | (b >> 3) << 10 | (g >> 3) << 5 | (r >> 3))
+        h.append('extern const sprite_t spr_%s;' % n)
+        c.append('static const uint16_t %s_pixels[] = {' % n)
+        for i in range(0, len(px), 16):
+            c.append('\t' + ', '.join('0x%04X' % p for p in px[i:i + 16]) + ',')
+        c.append('};')
+        c.append('const sprite_t spr_%s = { %d, %d, %s_pixels };' % (n, im.width, im.height, n))
+    open(os.path.join(gen, 'sprites.h'), 'w').write('\n'.join(h) + '\n')
+    open(os.path.join(gen, 'sprites.c'), 'w').write('\n'.join(c) + '\n')
 
 
 def compile_program():
     os.makedirs(OUT, exist_ok=True)
+    gen = os.path.join(OUT, 'gen')
+    os.makedirs(gen, exist_ok=True)
+    font_header(gen)
+    sprites_source(gen)
     elf, binary = os.path.join(OUT, NAME + '.elf'), os.path.join(OUT, NAME + '.bin')
     subprocess.check_call(['sh4-linux-gnu-gcc', '-m4', '-ml', '-O2', '-static', '-fno-pic', '-nostdlib',
                            '-ffreestanding', '-fno-builtin', '-Wall', '-Wextra',
                            '-Wl,--build-id=none', '-Wl,-z,noexecstack', '-Wl,--no-warn-rwx-segments',
+                           '-I', os.path.join(HERE, 'src'), '-I', gen,
                            '-T', os.path.join(HERE, 'src', 'link.ld')] +
-                          [os.path.join(HERE, 'src', s) for s in SOURCES] + ['-o', elf, '-lgcc'])
+                          [os.path.join(HERE, 'src', s) for s in SOURCES] +
+                          [os.path.join(gen, 'sprites.c'), '-o', elf, '-lgcc'])
     subprocess.check_call(['sh4-linux-gnu-objcopy', '-O', 'binary', elf, binary])
     return open(binary, 'rb').read()
 

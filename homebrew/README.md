@@ -4,16 +4,18 @@ Un jeu fait maison qui tourne sur la borne **SEGA Hikaru** telle qu'Odin
 l'émule : un vrai programme pour son processeur SH-4, lancé par le BIOS
 SEGA comme les jeux d'origine.
 
-Pour l'instant : **une démo**. Un carré se déplace au stick (ou aux flèches)
-et change de couleur avec les boutons 1, 2 et 3 ; START change la couleur du
-fond.
+Pour l'instant : **une démo**. Un vaisseau se déplace au stick (ou aux
+flèches) et tire avec le bouton 1 sur des aliens qui descendent ; le score
+s'affiche en haut ; START change la couleur des étoiles. Pendant la dizaine de
+secondes où la carte d'entrées-sorties s'initialise, l'écran affiche
+« WAITING FOR THE I/O BOARD... ».
 
-![La démo : le carré poussé à droite, puis rouge avec le bouton 1](docs/demo.png)
+![La démo dans Odin](docs/demo.png)
 
 ## Construire
 
 ```sh
-sudo apt install gcc-sh4-linux-gnu      # le compilateur C pour SH-4
+sudo apt install gcc-sh4-linux-gnu python3-pil   # le compilateur C pour SH-4, Pillow pour les PNG
 python3 build.py                        # → build/odinhb.zip et build/odinhb.json
 python3 build.py --games chemin/vers/odin-games.json   # ajoute aussi le jeu à la liste d'Odin
 ```
@@ -49,6 +51,18 @@ bits, échangés. Les registres de la puce d'affichage (`1A000190` et
 suivants) disent où est la couche, son format, si elle est visible et
 au-dessus de la 3D.
 
+### Double tampon, texte et sprites
+
+Deux images de la couche 1 sont dans la mémoire d'image (lignes 1024 et
+1536) : l'une est affichée pendant que le programme dessine l'autre, puis
+`screen_flip()` les échange au début de l'image suivante. Rien ne scintille.
+
+- **Texte** : une police 5×7 dessinée pour ce projet (`tools/font5x7.txt`,
+  modifiable à la main), agrandissable (`draw_text`, `draw_number`).
+- **Sprites** : les images PNG de `assets/` deviennent des sprites
+  (`spr_<nom>`) à la construction ; les pixels transparents ne sont pas
+  dessinés (`draw_sprite`, `draw_sprite_scaled`).
+
 ### Les commandes : le MIE et le JVS
 
 Les commandes passent par le **MIE**, un Z80 qui parle à la carte
@@ -68,10 +82,13 @@ dialogue par une boîte aux lettres en mémoire du Z80 :
 
 | Fichier | Rôle |
 |---|---|
-| `src/hikaru.h`, `src/hikaru.c` | la borne : couche 2D, image suivante, commandes |
+| `src/hikaru.h`, `src/hikaru.c` | la borne : couche 2D et double tampon, image suivante, commandes |
+| `src/gfx.h`, `src/gfx.c` | le dessin : effacer, rectangles, sprites, texte, nombres |
 | `src/main.c` | la démo |
+| `assets/*.png` | les sprites (le vaisseau, l'alien) |
+| `tools/font5x7.txt` | la police |
 | `src/crt0.S`, `src/link.ld` | le démarrage du programme et son placement en mémoire |
-| `build.py` | compile, fabrique les EPROM et l'entrée de la liste des jeux |
+| `build.py` | génère la police et les sprites, compile, fabrique les EPROM et l'entrée de la liste des jeux |
 
 ## Limites connues
 
@@ -79,4 +96,4 @@ dialogue par une boîte aux lettres en mémoire du Z80 :
   BIOS 0.92 et 0.84 ne sont pas encore pris en charge.
 - Les commandes ne répondent qu'une dizaine de secondes après le lancement
   (l'initialisation de la carte JVS).
-- Pas encore de texte, de son, ni de 3D.
+- Pas encore de son ni de 3D.

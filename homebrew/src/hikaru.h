@@ -23,15 +23,20 @@ static inline uint16_t rgb(unsigned r, unsigned g, unsigned b)
 	return (uint16_t)(0x8000 | ((b >> 3) << 10) | ((g >> 3) << 5) | (r >> 3));
 }
 
-/* Layer 1 shown above the 3D, opaque, from line LAYER_Y of the RAM */
+/* Layer 1 shown above the 3D, opaque. Two pictures in the framebuffer
+ * RAM: one shown while the other is drawn (screen_flip swaps them). */
 void layer_init(void);
-void fill_rect(int x, int y, int w, int h, uint16_t colour);
 
-/* ---- the frame ---------------------------------------------------------- */
+/* The picture being drawn: SCREEN_H lines of SCREEN_PITCH pixels */
+#define SCREEN_PITCH 2048
+extern volatile uint16_t *screen;
 
 /* Waits for the start of the next frame (the line counter of the display
  * chip going back to the top) */
 void wait_frame(void);
+/* Shows the picture drawn from the next frame on; the other one is then
+ * the one drawn */
+void screen_flip(void);
 
 /* ---- inputs: JVS through the MIE ---------------------------------------- */
 
@@ -46,6 +51,8 @@ enum {
 /* Starts the JVS program of the MIE (the one of the cabinet's BOOTROM,
  * copied from it at run time: none of SEGA's code is in this ROM) */
 void input_init(void);
+/* Whether the JVS board answers yet (some ten seconds after input_init) */
+int input_ready(void);
 /* The switches of player 1 as the last poll gave them; asks for the next */
 uint16_t input_read(void);
 /* The Test switch of the cabinet */

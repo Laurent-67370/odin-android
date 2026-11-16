@@ -14,7 +14,10 @@
 
 #define FB        0xBB000000u	/* framebuffer RAM 1B000000, uncached */
 #define FB_PITCH  4096u		/* a line of the RAM, 2048 x 2 bytes */
-#define LAYER_Y   1024u		/* layer 1 below the 3D framebuffer */
+/* The two pictures of layer 1, below the 3D framebuffer */
+static const unsigned picture_y[2] = { 1024u, 1536u };
+static unsigned drawn;		/* the picture being drawn */
+volatile uint16_t *screen;
 
 /* Unit 0 of the display chip (315-6087): layer 1 corners, formats, enable,
  * priority, transparency */
@@ -26,28 +29,30 @@
 #define LAYER_KEY   0xBA0001BCu
 #define RASTER      0xBA00001Cu	/* bits 11-21: the line drawn */
 
+static void show(unsigned y)
+{
+	REG32(LAYER1_LO) = (y << 9) | 0;
+	REG32(LAYER1_HI) = ((y + SCREEN_H) << 9) | (SCREEN_W / 2);
+}
+
 void layer_init(void)
 {
-	REG32(LAYER1_LO) = (LAYER_Y << 9) | 0;
-	REG32(LAYER1_HI) = ((LAYER_Y + SCREEN_H) << 9) | (SCREEN_W / 2);
+	drawn = 1;
+	screen = (volatile uint16_t *)(FB + picture_y[drawn] * FB_PITCH);
+	show(picture_y[0]);
 	REG32(LAYER_FMT) = 0;		/* ABGR1555 */
 	REG32(LAYER_KEY) = 0;		/* opaque */
 	REG32(LAYER_ABOVE) = 1;		/* above the 3D */
 	REG32(LAYER_ON) = 1;
 }
 
-void fill_rect(int x, int y, int w, int h, uint16_t colour)
+void screen_flip(void)
 {
-	if (x < 0) { w += x; x = 0; }
-	if (y < 0) { h += y; y = 0; }
-	if (x + w > SCREEN_W) w = SCREEN_W - x;
-	if (y + h > SCREEN_H) h = SCREEN_H - y;
-	for (int j = 0; j < h; j++) {
-		volatile uint16_t *line = (volatile uint16_t *)(FB + (LAYER_Y + (unsigned)(y + j)) * FB_PITCH);
-		/* two pixels a 32-bit word, the pair swapped */
-		for (int i = 0; i < w; i++)
-			line[(unsigned)(x + i) ^ 1u] = colour;
-	}
+	/* The chip takes the corners of the layer as a frame starts */
+	show(picture_y[drawn]);
+	wait_frame();
+	drawn ^= 1;
+	screen = (volatile uint16_t *)(FB + picture_y[drawn] * FB_PITCH);
 }
 
 void wait_frame(void)
@@ -108,6 +113,11 @@ void input_init(void)
  * switches come in E003 (the cabinet) and E004-E005 (player 1). */
 static uint16_t switches;
 static uint8_t cabinet;
+
+int input_ready(void)
+{
+	return ZMEM(0xC004) == 3;
+}
 
 uint16_t input_read(void)
 {
