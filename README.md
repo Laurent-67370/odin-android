@@ -166,6 +166,13 @@ borne SEGA Hikaru : il démarre par le BIOS SEGA comme un vrai jeu, affiche
 par la couche 2D et lit les commandes par le JVS. C'est la base d'un futur jeu
 compatible avec Odin.
 
+Pour y jouer sur le téléphone : télécharger
+[odinhb.zip](https://github.com/Laurent-67370/odin-android/releases/download/odin-apk/odinhb.zip)
+(publié avec l'APK, construit à chaque version) et le mettre dans
+`Odin/roms`, à côté de `hikaru.zip` et `mie.zip`. Le jeu s'appelle **Odin
+Homebrew** dans la liste. Les commandes répondent une dizaine de secondes après
+le lancement (l'écran l'indique).
+
 ## Construire soi-même
 
 ```sh
