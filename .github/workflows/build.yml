@@ -27,11 +27,19 @@ jobs:
       - name: Tools (glslangValidator for the shaders)
         run: |
           sudo apt-get update -q
-          sudo apt-get install -y -q glslang-tools gawk
+          sudo apt-get install -y -q glslang-tools gawk gcc-sh4-linux-gnu python3-pil
       - name: Odin's sources, patched for Android
         run: |
           ./fetch-odin.sh
           echo "ODIN_COMMIT=$(cat odin.version)" >> "$GITHUB_ENV"
+      - name: The homebrew (homebrew/), in Odin's list of games
+        run: |
+          python3 homebrew/build.py --games odin-src/odin-games.json
+          cp homebrew/build/odinhb.zip odinhb.zip
+      - uses: actions/upload-artifact@v4
+        with:
+          name: odinhb
+          path: odinhb.zip
       - name: Signing key (secrets ODIN_KEYSTORE_B64, ODIN_KEYSTORE_PASSWORD)
         env:
           KEYSTORE_B64: ${{ secrets.ODIN_KEYSTORE_B64 }}
@@ -72,6 +80,6 @@ jobs:
         run: |
           cp app/build/outputs/apk/release/app-release.apk odin.apk
           gh release delete odin-apk --yes --cleanup-tag || true
-          gh release create odin-apk odin.apk --target "$GITHUB_SHA" \
+          gh release create odin-apk odin.apk odinhb.zip --target "$GITHUB_SHA" \
             --title "Odin — APK Android" \
-            --notes "Odin (émulateur SEGA Hikaru / Gaelco ATV Track) pour Android ARM64, construit depuis Odin ${ODIN_COMMIT::7} et ${GITHUB_SHA::7}. Téléchargez odin.apk sur le téléphone, ouvrez-le et autorisez l'installation depuis cette source. Placez vos jeux dans le dossier Odin/roms du téléphone."
+            --notes "Odin (émulateur SEGA Hikaru / Gaelco ATV Track) pour Android ARM64, construit depuis Odin ${ODIN_COMMIT::7} et ${GITHUB_SHA::7}. Téléchargez odin.apk sur le téléphone, ouvrez-le et autorisez l'installation depuis cette source. Placez vos jeux dans le dossier Odin/roms du téléphone. odinhb.zip est le homebrew du dépôt (Odin Homebrew) : à mettre aussi dans Odin/roms, il demande le BIOS hikaru.zip et mie.zip."

@@ -12,6 +12,19 @@ secondes où la carte d'entrées-sorties s'initialise, l'écran affiche
 
 ![La démo dans Odin](docs/demo.png)
 
+## Jouer sur le téléphone
+
+L'APK connaît le jeu, et `odinhb.zip` est publié avec lui à chaque version :
+
+1. Télécharger
+   [odinhb.zip](https://github.com/Laurent-67370/odin-android/releases/download/odin-apk/odinhb.zip).
+2. Le mettre dans `Odin/roms`, à côté de `hikaru.zip` et `mie.zip`.
+3. Lancer **Odin Homebrew** dans la liste des jeux.
+
+Manette tactile : le stick déplace le vaisseau, A tire, START change les
+étoiles. Après une mise à jour de l'APK qui change le homebrew, retélécharger
+`odinhb.zip` : Odin vérifie que les EPROM sont celles que sa liste attend.
+
 ## Construire
 
 ```sh
