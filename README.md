@@ -14,6 +14,7 @@ https://github.com/Laurent-67370/odin-android/releases/download/odin-apk/odin.ap
 | Air Trix, NASCAR Arcade, Star Wars Racer Arcade | jouables, **60 images/s** (Snapdragon 8 Gen 2), aussi en résolution 2× |
 | Brave Firefighters | jouable, visée au doigt : le jet part sous le doigt |
 | Gaelco Football | second stick tactile pour le tir, à essayer |
+| Virtual-On Force | deux leviers sur les deux sticks tactiles, à essayer |
 | Manette tactile | stick flottant, boutons, gâchettes, vibration, panneau de raccourcis ; en paysage, rangée dans deux colonnes latérales |
 | Format de l'image | 4:3 (borne), 16:9 ou plein écran |
 | Menus | agrandis ×3 en paysage, police Roboto nette |
@@ -93,6 +94,10 @@ par seconde** en course : la carte graphique travaille environ 9 ms sur les
   boutons A / B / C de la borne, et un **second stick** à droite donne le tir
   (de côté et vers l'avant) : il flotte sur toute la moitié droite de l'écran,
   là où il n'y a pas de bouton, et se dessine à côté des boutons A B X Y.
+- **Virtual-On Force** (deux leviers, comme la borne) : le levier gauche au
+  stick de gauche, le levier droit au **second stick** à droite ; gâchettes
+  LT / RT, turbos LB / RB, P.I.B. sur Y. La carte de sauvegarde s'insère avec
+  CARD dans le panneau •••.
 - Ces adaptations se font d'elles-mêmes selon les commandes du jeu : visée
   pour un jeu à viseur, second stick pour un jeu qui en a un.
 - **Raccourcis** : le bouton **•••** (à droite de MENU) ouvre un panneau de gros
