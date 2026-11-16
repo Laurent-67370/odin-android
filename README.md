@@ -100,7 +100,8 @@ par seconde** en course : la carte graphique travaille environ 9 ms sur les
   dans `odin.ini` (`[display] shape`).
 - **Menus lisibles** : en paysage, la bibliothèque et le menu d'Odin sont
   agrandis ×3 selon la densité de l'écran (en portrait, trop étroit, ils gardent
-  leur taille).
+  leur taille). Leurs lettres sont celles de **Roboto**, la police d'Android,
+  dessinées nettes à cette taille (au lieu des pixels agrandis de Cozette).
 - La touche **Retour** d'Android ouvre / ferme le menu (Échap).
 - Dans les menus, on touche les éléments comme avec une souris.
 
