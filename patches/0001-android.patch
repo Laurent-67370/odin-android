@@ -2719,10 +2719,18 @@ index b1bc982..e9308b3 100644
  bool
  FolderDialog::open() const
 diff --git a/src/odin/host/ui/menu.cpp b/src/odin/host/ui/menu.cpp
-index 0678015..1d984a3 100644
+index 0678015..564e27e 100644
 --- a/src/odin/host/ui/menu.cpp
 +++ b/src/odin/host/ui/menu.cpp
-@@ -136,6 +136,11 @@ constexpr float WIDE = 1.5f;
+@@ -28,6 +28,7 @@
+ #include <cctype>
+ #include <cfloat>
+ #include <cmath>
++#include <filesystem>
+ #include <optional>
+ #include <utility>
+ 
+@@ -136,6 +137,11 @@ constexpr float WIDE = 1.5f;
   * sooner, as the window is larger (the drawings of the page Input already
   * are, at 1600 by 900) */
  constexpr float LETTERS_UP = 0.45f;
@@ -2734,7 +2742,7 @@ index 0678015..1d984a3 100644
  
  /* The size of the menu in a window of that size, and the size it is made
   * for */
-@@ -400,8 +405,24 @@ Menu::follow_scale()
+@@ -400,8 +406,24 @@ Menu::follow_scale()
  	SDL_GetWindowSize(m_window, &w, &h);
  
  	const auto [size, made] = menu_size(static_cast<float>(w), static_cast<float>(h));
@@ -2760,7 +2768,56 @@ index 0678015..1d984a3 100644
  
  	if (scale == m_scale && density == m_density)
  		return;
-@@ -667,6 +688,15 @@ Menu::page_display(MenuKit &kit, MenuState &state) const
+@@ -410,7 +432,7 @@ Menu::follow_scale()
+ 
+ 	style = m_style;
+ 	style.ScaleAllSizes(scale);
+-	style.FontScaleDpi = std::max(1.0f, std::floor(scale * density + 1.0f - LETTERS_UP)) / density;
++	style.FontScaleDpi = m_smooth_letters ? scale : std::max(1.0f, std::floor(scale * density + 1.0f - LETTERS_UP)) / density;
+ 	m_scale = scale;
+ 	m_density = density;
+ }
+@@ -424,17 +446,34 @@ void
+ Menu::add_fonts()
+ {
+ 	static constexpr float COZETTE_SIZE = 13.0f;
++	/* As high to the eye as Cozette at 13 */
++	static constexpr float SMOOTH_SIZE = 13.5f;
+ 	ImFontAtlas &fonts = *ImGui::GetIO().Fonts;
+ 	ImFontConfig pixels;
+ 	std::string names;
+ 
+ 	if (fonts.Sources.Size)
+ 		return;
+-	pixels.FontDataOwnedByAtlas = false;
+-	pixels.PixelSnapH = true;
+-	pixels.OversampleH = pixels.OversampleV = 1;
+-	fonts.AddFontFromMemoryTTF(const_cast<unsigned char *>(odin_font_cozette),
+-	                           static_cast<int>(odin_font_cozette_end - odin_font_cozette), COZETTE_SIZE, &pixels);
++	/* A phone draws the menu three times larger: there the letters of
++	 * Roboto, smooth at any size, in place of Cozette's pixels (ODIN_MENU_FONT
++	 * names another font, on any system) */
++	const char *smooth = SDL_getenv("ODIN_MENU_FONT");
++#if defined(__ANDROID__)
++	for (const char *path : { "/system/fonts/Roboto-Regular.ttf", "/system/fonts/RobotoStatic-Regular.ttf" })
++		if (!smooth && std::filesystem::exists(path))
++			smooth = path;
++#endif
++	if (smooth && *smooth && fonts.AddFontFromFileTTF(smooth, SMOOTH_SIZE)) {
++		m_smooth_letters = true;
++		m_scale = 0.0f;	/* the letters at the menu's size from the next frame */
++		std::printf("menu: letters of %s\n", smooth);
++	} else {
++		pixels.FontDataOwnedByAtlas = false;
++		pixels.PixelSnapH = true;
++		pixels.OversampleH = pixels.OversampleV = 1;
++		fonts.AddFontFromMemoryTTF(const_cast<unsigned char *>(odin_font_cozette),
++		                           static_cast<int>(odin_font_cozette_end - odin_font_cozette), COZETTE_SIZE, &pixels);
++	}
+ 	m_fonts = std::make_unique<SystemFonts>();
+ 	for (const SystemFonts::Font &font : m_fonts->fonts()) {
+ 		ImFontConfig more;
+@@ -667,6 +706,15 @@ Menu::page_display(MenuKit &kit, MenuState &state) const
  			state.upscale_mode = static_cast<unsigned>(upscale_mode);
  	});
  
@@ -2777,7 +2834,7 @@ index 0678015..1d984a3 100644
  
  	kit.next_tip("Sharpens distant textures, such as roads and floors (NASCAR, Virtual-On). The cabinet has none.");
 diff --git a/src/odin/host/ui/menu.hpp b/src/odin/host/ui/menu.hpp
-index d908c1f..7420e6a 100644
+index d908c1f..9122b98 100644
 --- a/src/odin/host/ui/menu.hpp
 +++ b/src/odin/host/ui/menu.hpp
 @@ -153,6 +153,7 @@ struct BarSettings {
@@ -2788,6 +2845,16 @@ index d908c1f..7420e6a 100644
  	std::string filter, gpu_chosen;
  	std::vector<std::string> gpus;	/* the cards of the computer */
  	/* Only Vulkan can be told which card, with more than one to tell */
+@@ -782,6 +783,9 @@ private:
+ 	 * pixels a point */
+ 	ImGuiStyle m_style;
+ 	float m_scale, m_density = 1.0f;
++	/* The letters of a smooth font of the system (a phone's Roboto), drawn
++	 * at the size of the menu, not of pixels grown by whole steps */
++	bool m_smooth_letters = false;
+ 	int m_page;
+ 	const MenuPalette *m_palette = &RUNASTEINN;
+ 	/* The frame the gamepad moves on the page */
 diff --git a/src/odin/host/ui/menu_bar.cpp b/src/odin/host/ui/menu_bar.cpp
 index 0282be6..b7307d2 100644
 --- a/src/odin/host/ui/menu_bar.cpp
