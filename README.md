@@ -87,6 +87,11 @@ par seconde** en course : la carte graphique travaille environ 9 ms sur les
   panneau.
 - **Portrait ou paysage**, comme on tient le téléphone (le verrouillage de la
   rotation est respecté) : la manette se place autour de l'image dans les deux.
+  En paysage, tout est dans deux colonnes sur les côtés (à gauche LT, LB, MENU,
+  le stick et COIN en bas ; à droite RT, RB, •••, A B X Y et START en bas) :
+  rien ne couvre le milieu de l'image (chronos, scores). Quand l'image est
+  élargie (16:9, Full) et passe sous les boutons, ceux-ci deviennent plus
+  transparents.
 - **Plein écran** : les barres d'Android restent masquées (un balayage depuis le
   bord les fait revenir un instant), aussi au retour dans l'application.
 - **Format de l'image** (MENU → Display → 3D QUALITY → *Picture shape*) :
