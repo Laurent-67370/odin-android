@@ -12,7 +12,8 @@ https://github.com/Laurent-67370/odin-android/releases/download/odin-apk/odin.ap
 | Point | État |
 |---|---|
 | Air Trix, NASCAR Arcade, Star Wars Racer Arcade | jouables, **60 images/s** (Snapdragon 8 Gen 2), aussi en résolution 2× |
-| Brave Firefighters, Gaelco Football | manette tactile adaptée (visée au doigt, second stick), à essayer |
+| Brave Firefighters | jouable, visée au doigt : le jet part sous le doigt |
+| Gaelco Football | second stick tactile pour le tir, à essayer |
 | Manette tactile | stick flottant, boutons, gâchettes, vibration, panneau de raccourcis ; en paysage, rangée dans deux colonnes latérales |
 | Format de l'image | 4:3 (borne), 16:9 ou plein écran |
 | Menus | agrandis ×3 en paysage, police Roboto nette |
