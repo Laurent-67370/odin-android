@@ -1043,7 +1043,7 @@ index ea40540..b11bff6 100644
  }
  
 diff --git a/src/odin/host/input/controls.cpp b/src/odin/host/input/controls.cpp
-index c4acd40..408ca7a 100644
+index c4acd40..8c7b599 100644
 --- a/src/odin/host/input/controls.cpp
 +++ b/src/odin/host/input/controls.cpp
 @@ -23,6 +23,7 @@
@@ -1054,7 +1054,7 @@ index c4acd40..408ca7a 100644
  #include "odin/host/input/wheels.hpp"
  
  #include "odin/host/audio/audio_out.hpp"
-@@ -170,6 +171,16 @@ Controls::Controls(Keyboard &keys, const std::vector<GameControl> &controls, con
+@@ -170,6 +171,20 @@ Controls::Controls(Keyboard &keys, const std::vector<GameControl> &controls, con
  		return;
  	}
  	m_on = true;
@@ -1066,12 +1066,16 @@ index c4acd40..408ca7a 100644
 +			});
 +		};
 +
-+		touch_pad_twin_levers(analog(Role::STICK_Y) && analog(Role::STICK2_Y) && !analog(Role::STICK_X));
++		const bool twin = analog(Role::STICK_Y) && analog(Role::STICK2_Y) && !analog(Role::STICK_X);
++
++		touch_pad_twin_levers(twin);
++		touch_pad_second_stick(!twin && (analog(Role::STICK2_X) || analog(Role::STICK2_Y)));
++		touch_pad_aim_mode(analog(Role::GUN_X) && analog(Role::GUN_Y));
 +	}
  	follow_cursor();
  }
  
-@@ -201,6 +212,7 @@ Controls::~Controls()
+@@ -201,6 +216,7 @@ Controls::~Controls()
  		SDL_CloseGamepad(pad.handle);
  	for (Joy &joy : m_joys)
  		SDL_CloseJoystick(joy.handle);
@@ -1079,6 +1083,44 @@ index c4acd40..408ca7a 100644
  	SDL_QuitSubSystem(SDL_INIT_GAMEPAD);
  }
  
+@@ -534,6 +550,10 @@ Controls::event(const SDL_Event &event)
+ 		return false;
+ 	switch (event.type) {
+ 	case SDL_EVENT_MOUSE_MOTION: {
++		/* A touch aims as touch_pad_aim says, every finger, not as the
++		 * mouse SDL makes of the first */
++		if (event.motion.which == SDL_TOUCH_MOUSEID && touch_pad_aims())
++			return true;
+ 		/* SDL 3 gives the place in fractions of a pixel; whole pixels, as SDL 2 did */
+ 		const int x = static_cast<int>(event.motion.x), y = static_cast<int>(event.motion.y);
+ 		int w = 0, h = 0;
+@@ -551,6 +571,9 @@ Controls::event(const SDL_Event &event)
+ 	}
+ 	case SDL_EVENT_MOUSE_BUTTON_DOWN:
+ 	case SDL_EVENT_MOUSE_BUTTON_UP: {
++		if (event.button.which == SDL_TOUCH_MOUSEID && touch_pad_aims())
++			return true;
++
+ 		const int index = mouse_button_of(event.button.button);
+ 
+ 		if (index >= 0)
+@@ -862,6 +885,16 @@ Controls::pad_type(unsigned player) const
+ void
+ Controls::update()
+ {
++	/* The finger that aims on the touch screen: the mouse, its left button */
++	if (TouchAim touch; touch_pad_aim(touch)) {
++		aim_at(m_mouse, static_cast<int>(touch.x), static_cast<int>(touch.y), static_cast<int>(touch.w),
++		       static_cast<int>(touch.h), m_hole);
++		m_mouse_seen = true;
++		for (unsigned tap = 0; tap < touch.taps; tap++)
++			press(m_mouse.buttons[0], m_mouse_fresh[0], m_mouse_release[0], true);
++		if (!touch.down)
++			press(m_mouse.buttons[0], m_mouse_fresh[0], m_mouse_release[0], false);
++	}
+ 	follow_guns(true);
+ 	m_panel.update(host());
+ 	settle();
 diff --git a/src/odin/host/input/evdev.cpp b/src/odin/host/input/evdev.cpp
 index d01c7d4..ae0550d 100644
 --- a/src/odin/host/input/evdev.cpp
@@ -1107,10 +1149,10 @@ index 3cad3b1..b54f8d8 100644
  
 diff --git a/src/odin/host/input/touch_pad.cpp b/src/odin/host/input/touch_pad.cpp
 new file mode 100644
-index 0000000..a17ae77
+index 0000000..887a779
 --- /dev/null
 +++ b/src/odin/host/input/touch_pad.cpp
-@@ -0,0 +1,788 @@
+@@ -0,0 +1,889 @@
 +/*
 + *  ██████╗ ██████╗ ██╗███╗   ██╗
 + * ██╔═══██╗██╔══██╗██║████╗  ██║
@@ -1145,6 +1187,7 @@ index 0000000..a17ae77
 +#include <cstdio>
 +#include <mutex>
 +#include <string_view>
++#include <utility>
 +#include <vector>
 +
 +#include <SDL3/SDL.h>
@@ -1162,19 +1205,23 @@ index 0000000..a17ae77
 +	BUTTON_A, BUTTON_B, BUTTON_X, BUTTON_Y,
 +	SHOULDER_L, SHOULDER_R, TRIGGER_L, TRIGGER_R,
 +	START, COIN, MENU, TOOLS,
++	/* The second stick, on the right (touch_pad_second_stick) */
++	STICK2,
 +	PARTS,
 +	/* A finger on a key of the panel of shortcuts */
-+	PANEL_KEY = PARTS
++	PANEL_KEY = PARTS,
++	/* A finger that aims on the picture (touch_pad_aim_mode) */
++	AIM
 +};
 +
-+constexpr const char *LABELS[PARTS] = { "", "A", "B", "X", "Y", "LB", "RB", "LT", "RT", "START", "COIN", "MENU", "" };
++constexpr const char *LABELS[PARTS] = { "", "A", "B", "X", "Y", "LB", "RB", "LT", "RT", "START", "COIN", "MENU", "", "" };
 +
 +/* The SDL button each part presses (none for the stick and the triggers) */
 +constexpr int BUTTONS[PARTS] = {
 +	-1,
 +	SDL_GAMEPAD_BUTTON_SOUTH, SDL_GAMEPAD_BUTTON_EAST, SDL_GAMEPAD_BUTTON_WEST, SDL_GAMEPAD_BUTTON_NORTH,
 +	SDL_GAMEPAD_BUTTON_LEFT_SHOULDER, SDL_GAMEPAD_BUTTON_RIGHT_SHOULDER, -1, -1,
-+	SDL_GAMEPAD_BUTTON_START, SDL_GAMEPAD_BUTTON_BACK, SDL_GAMEPAD_BUTTON_GUIDE, -1,
++	SDL_GAMEPAD_BUTTON_START, SDL_GAMEPAD_BUTTON_BACK, SDL_GAMEPAD_BUTTON_GUIDE, -1, -1,
 +};
 +
 +/* The panel of shortcuts (TOOLS): the keys of the hotkeys of Odin by
@@ -1234,7 +1281,7 @@ index 0000000..a17ae77
 +	int part = NOTHING;	/* a Part, or PANEL_KEY */
 +	float x = 0, y = 0;	/* points */
 +	int shortcut = -1;	/* on PANEL_KEY: its SHORTCUTS */
-+	float ox = 0, oy = 0;	/* on the stick: its centre, where the finger came down */
++	float ox = 0, oy = 0;	/* on a stick: its centre, where the finger came down */
 +};
 +
 +/* A key to send to Odin, from its own thread (touch_pad_draw) */
@@ -1267,12 +1314,21 @@ index 0000000..a17ae77
 +	/* The touch that came as the mouse began on the pad: its mouse events
 +	 * are the pad's */
 +	bool mouse_taken = false;
++	/* Where the finger that aims is, or was last (points), and the touches
++	 * that came down to aim since Controls last looked */
++	float aim_x = 0, aim_y = 0;
++	bool aimed = false;
++	unsigned aim_taps = 0;
++	/* A menu of Dear ImGui open over the game: the touches are its */
++	bool popup = false;
 +};
 +
 +State g_state;
 +/* The touches that landed on a part, for a short buzz (Odin's thread) */
 +std::atomic<unsigned> g_buzzes{ 0 };
 +std::atomic<bool> g_twin{ false };
++std::atomic<bool> g_aim{ false };
++std::atomic<bool> g_second{ false };
 +SDL_Haptic *g_haptic = nullptr;
 +bool g_haptic_looked = false;
 +std::atomic<Uint64> g_drawn_ns{ 0 };
@@ -1311,6 +1367,11 @@ index 0000000..a17ae77
 +	s[SHOULDER_R] = { w - 0.04f * u - bw * 0.5f, top + bh * 1.75f, bw, bh };
 +
 +	const float sw = 0.17f * u, sh = 0.075f * u;
++
++	/* The second stick where it rests, beside the face buttons (it floats
++	 * over the whole right half) */
++	s[STICK2] = w > h ? Shape{ face_x - gap - button - 0.20f * u, face_y, 0.14f * u, 0 } :
++	                    Shape{ face_x, face_y - gap - button - 0.20f * u, 0.14f * u, 0 };
 +
 +	if (w > h) {
 +		/* Held flat: every part in the two columns at the sides, none over
@@ -1393,17 +1454,30 @@ index 0000000..a17ae77
 +		g_state.panel = false;
 +}
 +
-+/* The part under a point; the stick reaches further than it is drawn */
++/* The part under a point; the stick reaches further than it is drawn, the
++ * second over the right half of the window; no stick in a game that aims */
 +Part
 +part_at(const std::array<Shape, PARTS> &s, float x, float y)
 +{
-+	for (int p = BUTTON_A; p < PARTS; p++)
++	for (int p = BUTTON_A; p < STICK2; p++)
 +		if (s[static_cast<size_t>(p)].hit(x, y, 1.15f))
 +			return static_cast<Part>(p);
 +	/* The stick floats: it takes a thumb that comes down near it */
-+	if (s[STICK].hit(x, y, 2.3f))
++	if (!g_aim.load() && s[STICK].hit(x, y, 2.3f))
 +		return STICK;
++	if (g_second.load() && (s[STICK2].hit(x, y, 2.3f) || x > g_state.room_w * 0.5f))
++		return STICK2;
 +	return NOTHING;
++}
++
++/* Whether a point is on the picture, where a finger aims */
++bool
++on_picture(float x, float y)
++{
++	const PictureRect r = picture_rect(static_cast<unsigned>(g_state.room_w), static_cast<unsigned>(g_state.room_h));
++
++	return x >= static_cast<float>(r.x) && x < static_cast<float>(r.x + r.w) &&
++	       y >= static_cast<float>(r.y) && y < static_cast<float>(r.y + r.h);
 +}
 +
 +Finger *
@@ -1462,17 +1536,35 @@ index 0000000..a17ae77
 +				g_buzzes++;
 +				return true;
 +			}
-+			if (part == NOTHING && shortcut < 0)
++			/* Away from the pad, on the picture of a game that aims: a
++			 * finger that aims there, one at a time */
++			int taken = shortcut >= 0 ? PANEL_KEY : part;
++			if (taken == NOTHING && g_aim.load() && !g_state.popup && on_picture(x, y)) {
++				bool aiming = false;
++
++				for (const Finger &other : g_state.fingers)
++					aiming = aiming || other.part == AIM;
++				if (!aiming) {
++					taken = AIM;
++					g_state.aim_x = x;
++					g_state.aim_y = y;
++					g_state.aimed = true;
++					g_state.aim_taps++;
++				}
++			}
++			if (taken == NOTHING)
 +				return true;
 +			for (Finger &free : g_state.fingers)
 +				if (free.part == NOTHING) {
-+					free = { event->tfinger.fingerID, shortcut >= 0 ? PANEL_KEY : part, x, y, shortcut };
-+					if (part == STICK && shortcut < 0) {
++					free = { event->tfinger.fingerID, taken, x, y, shortcut };
++					if ((part == STICK || part == STICK2) && shortcut < 0) {
 +						/* Its centre under the thumb, the whole ring on
-+						 * the screen */
-+						const float r = g_state.shapes[STICK].w;
++						 * the screen, each stick on its half */
++						const float r = g_state.shapes[static_cast<size_t>(part)].w;
++						const float half = g_state.room_w * 0.5f;
 +
-+						free.ox = std::clamp(x, r, std::max(r, g_state.room_w * 0.5f));
++						free.ox = part == STICK ? std::clamp(x, r, std::max(r, half)) :
++						                          std::clamp(x, std::min(half, g_state.room_w - r), std::max(half, g_state.room_w - r));
 +						free.oy = std::clamp(y, r, std::max(r, g_state.room_h - r));
 +					}
 +					if (shortcut >= 0)
@@ -1488,11 +1580,14 @@ index 0000000..a17ae77
 +		} else if (f && event->type == SDL_EVENT_FINGER_MOTION) {
 +			f->x = x;
 +			f->y = y;
-+			/* A finger slides from button to button, not off the stick */
-+			if (f->part != STICK) {
++			if (f->part == AIM) {
++				g_state.aim_x = x;
++				g_state.aim_y = y;
++			} else if (f->part != STICK && f->part != STICK2) {
++				/* A finger slides from button to button, not off a stick */
 +				const Part part = part_at(g_state.shapes, x, y);
 +
-+				if (part != NOTHING && part != STICK)
++				if (part != NOTHING && part != STICK && part != STICK2)
 +					f->part = part;
 +			}
 +		} else if (f) {
@@ -1528,7 +1623,7 @@ index 0000000..a17ae77
 +update(void *)
 +{
 +	std::array<bool, SDL_GAMEPAD_BUTTON_COUNT> buttons{};
-+	float stick_x = 0, stick_y = 0;
++	float stick_x = 0, stick_y = 0, stick2_x = 0, stick2_y = 0;
 +	bool trigger_l = false, trigger_r = false;
 +	SDL_JoystickID id;
 +	{
@@ -1546,10 +1641,10 @@ index 0000000..a17ae77
 +				f.part = NOTHING;
 +				continue;
 +			}
-+			if (f.part == PANEL_KEY)
++			if (f.part >= PARTS)
 +				continue;
-+			if (f.part == STICK) {
-+				const Shape &s = g_state.shapes[STICK];
++			if (f.part == STICK || f.part == STICK2) {
++				const Shape &s = g_state.shapes[static_cast<size_t>(f.part)];
 +				float dx = (f.x - f.ox) / s.w, dy = (f.y - f.oy) / s.w;
 +				const float length = std::hypot(dx, dy);
 +
@@ -1557,8 +1652,8 @@ index 0000000..a17ae77
 +					dx /= length;
 +					dy /= length;
 +				}
-+				stick_x = dx;
-+				stick_y = dy;
++				(f.part == STICK ? stick_x : stick2_x) = dx;
++				(f.part == STICK ? stick_y : stick2_y) = dy;
 +			} else if (f.part == TRIGGER_L) {
 +				trigger_l = true;
 +			} else if (f.part == TRIGGER_R) {
@@ -1599,8 +1694,8 @@ index 0000000..a17ae77
 +
 +	SDL_SetJoystickVirtualAxis(joystick, 0, axis(twin ? 0.0f : stick_x));
 +	SDL_SetJoystickVirtualAxis(joystick, 1, axis(left_y));
-+	SDL_SetJoystickVirtualAxis(joystick, 2, 0);
-+	SDL_SetJoystickVirtualAxis(joystick, 3, axis(right_y));
++	SDL_SetJoystickVirtualAxis(joystick, 2, axis(stick2_x));
++	SDL_SetJoystickVirtualAxis(joystick, 3, axis(twin ? right_y : stick2_y));
 +	SDL_SetJoystickVirtualAxis(joystick, 4, trigger_l ? 32767 : -32768);
 +	SDL_SetJoystickVirtualAxis(joystick, 5, trigger_r ? 32767 : -32768);
 +	for (size_t b = 0; b < std::size(MASK_BUTTONS); b++)
@@ -1672,6 +1767,8 @@ index 0000000..a17ae77
 +		g_state.id = 0;
 +		for (Finger &f : g_state.fingers)
 +			f.part = NOTHING;
++		g_state.aimed = false;
++		g_state.aim_taps = 0;
 +	}
 +	if (id)
 +		SDL_DetachVirtualJoystick(id);
@@ -1681,6 +1778,43 @@ index 0000000..a17ae77
 +touch_pad_twin_levers(bool on)
 +{
 +	g_twin = on;
++}
++
++void
++touch_pad_aim_mode(bool on)
++{
++	g_aim = on;
++}
++
++bool
++touch_pad_aims()
++{
++	return touch_pad_wanted() && g_aim.load();
++}
++
++bool
++touch_pad_aim(TouchAim &aim)
++{
++	if (!touch_pad_aims())
++		return false;
++
++	const std::lock_guard<std::mutex> lock(g_state.mutex);
++
++	if (!g_state.aimed || g_state.room_w <= 0.0f || g_state.room_h <= 0.0f)
++		return false;
++	aim.x = g_state.aim_x;
++	aim.y = g_state.aim_y;
++	aim.w = g_state.room_w;
++	aim.h = g_state.room_h;
++	aim.down = std::any_of(g_state.fingers.begin(), g_state.fingers.end(), [](const Finger &f) { return f.part == AIM; });
++	aim.taps = std::exchange(g_state.aim_taps, 0u);
++	return true;
++}
++
++void
++touch_pad_second_stick(bool on)
++{
++	g_second = on;
 +}
 +
 +void
@@ -1704,13 +1838,15 @@ index 0000000..a17ae77
 +	Shape panel_box;
 +	bool panel;
 +	int armed;
-+	ImVec2 knob, stick_at;
++	/* The knobs of the sticks and the centres of their rings */
++	ImVec2 knobs[2], sticks_at[2];
 +	bool connected;
 +	{
 +		const std::lock_guard<std::mutex> lock(g_state.mutex);
 +
 +		g_state.room_w = room.x;
 +		g_state.room_h = room.y;
++		g_state.popup = ImGui::IsPopupOpen("", ImGuiPopupFlags_AnyPopupId | ImGuiPopupFlags_AnyPopupLevel);
 +		lay_out(g_state.shapes, room.x, room.y);
 +		lay_out_panel(g_state.panel_box, g_state.panel_keys, room.x, room.y);
 +		shapes = g_state.shapes;
@@ -1722,28 +1858,29 @@ index 0000000..a17ae77
 +		panel_keys = g_state.panel_keys;
 +		keys.swap(g_state.keys_to_send);
 +		connected = g_state.id != 0;
-+		knob = { shapes[STICK].x, shapes[STICK].y };
-+		stick_at = knob;
++		for (const int p : { STICK, STICK2 })
++			knobs[p == STICK2] = sticks_at[p == STICK2] = { shapes[static_cast<size_t>(p)].x, shapes[static_cast<size_t>(p)].y };
 +		for (const Finger &f : g_state.fingers) {
-+			if (f.part == NOTHING)
++			if (f.part == NOTHING || f.part == AIM)
 +				continue;
 +			if (f.part == PANEL_KEY) {
 +				panel_held[static_cast<size_t>(f.shortcut)] = true;
 +				continue;
 +			}
 +			held[static_cast<size_t>(f.part)] = true;
-+			if (f.part == STICK) {
-+				const Shape &s = shapes[STICK];
++			if (f.part == STICK || f.part == STICK2) {
++				const Shape &s = shapes[static_cast<size_t>(f.part)];
 +				float dx = f.x - f.ox, dy = f.y - f.oy;
++				const size_t which = f.part == STICK2;
 +
-+				stick_at = { f.ox, f.oy };
++				sticks_at[which] = { f.ox, f.oy };
 +				const float length = std::hypot(dx, dy);
 +
 +				if (length > s.w) {
 +					dx *= s.w / length;
 +					dy *= s.w / length;
 +				}
-+				knob = { f.ox + dx, f.oy + dy };
++				knobs[which] = { f.ox + dx, f.oy + dy };
 +			}
 +		}
 +	}
@@ -1821,9 +1958,15 @@ index 0000000..a17ae77
 +		const Shape &s = shapes[static_cast<size_t>(p)];
 +		const ImU32 inside = held[static_cast<size_t>(p)] ? pressed : fill;
 +
-+		if (p == STICK) {
-+			draw->AddCircleFilled(stick_at, s.w, IM_COL32(255, 255, 255, faded(25, 10)), 48);
-+			draw->AddCircle(stick_at, s.w, line, 48, thick);
++		if (p == STICK || p == STICK2) {
++			/* None in a game that aims; the second in a game that has it */
++			if (p == STICK ? g_aim.load() : !g_second.load())
++				continue;
++
++			const ImVec2 at = sticks_at[p == STICK2], knob = knobs[p == STICK2];
++
++			draw->AddCircleFilled(at, s.w, IM_COL32(255, 255, 255, faded(25, 10)), 48);
++			draw->AddCircle(at, s.w, line, 48, thick);
 +			draw->AddCircleFilled(knob, s.w * 0.45f, inside, 32);
 +			draw->AddCircle(knob, s.w * 0.45f, line, 32, thick);
 +			continue;
@@ -1901,10 +2044,10 @@ index 0000000..a17ae77
 +} /* namespace odin */
 diff --git a/src/odin/host/input/touch_pad.hpp b/src/odin/host/input/touch_pad.hpp
 new file mode 100644
-index 0000000..fdea144
+index 0000000..7a93e6c
 --- /dev/null
 +++ b/src/odin/host/input/touch_pad.hpp
-@@ -0,0 +1,53 @@
+@@ -0,0 +1,72 @@
 +/*
 + *  ██████╗ ██████╗ ██╗███╗   ██╗
 + * ██╔═══██╗██╔══██╗██║████╗  ██║
@@ -1952,6 +2095,25 @@ index 0000000..fdea144
 + * stick_x: Star Wars Racer Arcade): the one stick of the pad works both,
 + * forward together, left and right one against the other */
 +void touch_pad_twin_levers(bool on);
++/* A game where player 1 aims (gun_x and gun_y: Brave Firefighters): no
++ * stick; a finger on the picture, away from the pad, aims where it is and
++ * holds the first button as the mouse does, its left button. Controls takes
++ * the mouse from touch_pad_aim then, not the one SDL makes of a touch
++ * (touch_pad_aims). */
++void touch_pad_aim_mode(bool on);
++bool touch_pad_aims();
++struct TouchAim {
++	float x, y;	/* where the finger is or was last, in points */
++	float w, h;	/* the window, in points */
++	bool down;	/* a finger on it */
++	unsigned taps;	/* the fingers come down since last asked */
++};
++/* false while no finger aimed yet */
++bool touch_pad_aim(TouchAim &aim);
++/* A game with a second stick (stick2_x: the kick of Gaelco Football): a
++ * second floating stick, over the right half of the window, beside the face
++ * buttons */
++void touch_pad_second_stick(bool on);
 +/* The frames per second, shown in a corner of the pad (0: none yet) */
 +void touch_pad_speed(float fps);
 +
