@@ -1107,10 +1107,10 @@ index 3cad3b1..b54f8d8 100644
  
 diff --git a/src/odin/host/input/touch_pad.cpp b/src/odin/host/input/touch_pad.cpp
 new file mode 100644
-index 0000000..73121d8
+index 0000000..a17ae77
 --- /dev/null
 +++ b/src/odin/host/input/touch_pad.cpp
-@@ -0,0 +1,765 @@
+@@ -0,0 +1,788 @@
 +/*
 + *  ██████╗ ██████╗ ██╗███╗   ██╗
 + * ██╔═══██╗██╔══██╗██║████╗  ██║
@@ -1136,6 +1136,7 @@ index 0000000..73121d8
 + */
 +
 +#include "odin/host/input/touch_pad.hpp"
++#include "odin/host/video/picture.hpp"
 +
 +#include <algorithm>
 +#include <array>
@@ -1311,6 +1312,19 @@ index 0000000..73121d8
 +
 +	const float sw = 0.17f * u, sh = 0.075f * u;
 +
++	if (w > h) {
++		/* Held flat: every part in the two columns at the sides, none over
++		 * the middle of the picture, whatever its shape: MENU and the
++		 * shortcuts between the shoulders and the stick or the face
++		 * buttons, COIN and START in the bottom corners */
++		const float mid = top + bh * 2.25f + 0.08f * u;
++
++		s[MENU] = { 0.04f * u + bw * 0.5f, mid, sw, sh };
++		s[TOOLS] = { w - 0.04f * u - bw * 0.5f, mid, sw, sh };
++		s[COIN] = { 0.02f * u + sw * 0.5f, h - 0.045f * u, sw, sh };
++		s[START] = { w - 0.02f * u - sw * 0.5f, h - 0.045f * u, sw, sh };
++		return;
++	}
 +	s[COIN] = { w * 0.5f - sw * 0.65f, h - 0.07f * u, sw, sh };
 +	s[START] = { w * 0.5f + sw * 0.65f, h - 0.07f * u, sw, sh };
 +	/* MENU and the shortcuts at the top, as COIN and START at the bottom */
@@ -1779,8 +1793,17 @@ index 0000000..73121d8
 +		return;
 +
 +	ImDrawList *const draw = ImGui::GetForegroundDrawList();
-+	const ImU32 fill = IM_COL32(255, 255, 255, 40), pressed = IM_COL32(255, 255, 255, 110);
-+	const ImU32 line = IM_COL32(255, 255, 255, 120), text = IM_COL32(255, 255, 255, 190);
++	/* Over the picture (a wide one, 16:9 or the whole window: the bars at
++	 * its sides narrower than the columns of the pad), the parts are
++	 * fainter, the game seen through them; a touch still shows clearly */
++	const PictureRect picture = picture_rect(static_cast<unsigned>(room.x), static_cast<unsigned>(room.y));
++	const float columns = 0.42f * std::min(room.x, room.y);
++	const float clear = room.x > room.y ? std::clamp(static_cast<float>(picture.x) / columns, 0.0f, 1.0f) : 1.0f;
++	const auto faded = [clear](int alpha, int least) {
++		return static_cast<ImU32>(least + static_cast<int>(static_cast<float>(alpha - least) * clear));
++	};
++	const ImU32 fill = IM_COL32(255, 255, 255, faded(40, 18)), pressed = IM_COL32(255, 255, 255, 110);
++	const ImU32 line = IM_COL32(255, 255, 255, faded(120, 70)), text = IM_COL32(255, 255, 255, faded(190, 130));
 +	const float thick = std::max(1.5f, std::min(room.x, room.y) * 0.004f);
 +	ImFont *const font = ImGui::GetFont();
 +
@@ -1799,7 +1822,7 @@ index 0000000..73121d8
 +		const ImU32 inside = held[static_cast<size_t>(p)] ? pressed : fill;
 +
 +		if (p == STICK) {
-+			draw->AddCircleFilled(stick_at, s.w, IM_COL32(255, 255, 255, 25), 48);
++			draw->AddCircleFilled(stick_at, s.w, IM_COL32(255, 255, 255, faded(25, 10)), 48);
 +			draw->AddCircle(stick_at, s.w, line, 48, thick);
 +			draw->AddCircleFilled(knob, s.w * 0.45f, inside, 32);
 +			draw->AddCircle(knob, s.w * 0.45f, line, 32, thick);
