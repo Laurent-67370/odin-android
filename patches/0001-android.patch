@@ -1043,7 +1043,7 @@ index ea40540..b11bff6 100644
  }
  
 diff --git a/src/odin/host/input/controls.cpp b/src/odin/host/input/controls.cpp
-index c4acd40..2f94263 100644
+index c4acd40..408ca7a 100644
 --- a/src/odin/host/input/controls.cpp
 +++ b/src/odin/host/input/controls.cpp
 @@ -23,6 +23,7 @@
@@ -1054,15 +1054,24 @@ index c4acd40..2f94263 100644
  #include "odin/host/input/wheels.hpp"
  
  #include "odin/host/audio/audio_out.hpp"
-@@ -170,6 +171,7 @@ Controls::Controls(Keyboard &keys, const std::vector<GameControl> &controls, con
+@@ -170,6 +171,16 @@ Controls::Controls(Keyboard &keys, const std::vector<GameControl> &controls, con
  		return;
  	}
  	m_on = true;
 +	touch_pad_attach();
++	{
++		const auto analog = [this](Role role) {
++			return std::any_of(m_game_controls.begin(), m_game_controls.end(), [role](const GameControl &c) {
++				return c.type == GameControl::Type::ANALOG && c.role == role && c.player == 0;
++			});
++		};
++
++		touch_pad_twin_levers(analog(Role::STICK_Y) && analog(Role::STICK2_Y) && !analog(Role::STICK_X));
++	}
  	follow_cursor();
  }
  
-@@ -201,6 +203,7 @@ Controls::~Controls()
+@@ -201,6 +212,7 @@ Controls::~Controls()
  		SDL_CloseGamepad(pad.handle);
  	for (Joy &joy : m_joys)
  		SDL_CloseJoystick(joy.handle);
@@ -1098,10 +1107,10 @@ index 3cad3b1..b54f8d8 100644
  
 diff --git a/src/odin/host/input/touch_pad.cpp b/src/odin/host/input/touch_pad.cpp
 new file mode 100644
-index 0000000..356a72d
+index 0000000..73121d8
 --- /dev/null
 +++ b/src/odin/host/input/touch_pad.cpp
-@@ -0,0 +1,749 @@
+@@ -0,0 +1,765 @@
 +/*
 + *  ██████╗ ██████╗ ██╗███╗   ██╗
 + * ██╔═══██╗██╔══██╗██║████╗  ██║
@@ -1262,6 +1271,7 @@ index 0000000..356a72d
 +State g_state;
 +/* The touches that landed on a part, for a short buzz (Odin's thread) */
 +std::atomic<unsigned> g_buzzes{ 0 };
++std::atomic<bool> g_twin{ false };
 +SDL_Haptic *g_haptic = nullptr;
 +bool g_haptic_looked = false;
 +std::atomic<Uint64> g_drawn_ns{ 0 };
@@ -1567,10 +1577,18 @@ index 0000000..356a72d
 +	/* SDL numbers the inputs of a virtual gamepad as its masks have them,
 +	 * those it has not left out (SDL_virtualjoystick.c): the axes and the
 +	 * buttons below in that order, not by the numbers of their names */
-+	SDL_SetJoystickVirtualAxis(joystick, 0, axis(stick_x));
-+	SDL_SetJoystickVirtualAxis(joystick, 1, axis(stick_y));
-+	SDL_SetJoystickVirtualAxis(joystick, 2, trigger_l ? 32767 : -32768);
-+	SDL_SetJoystickVirtualAxis(joystick, 3, trigger_r ? 32767 : -32768);
++	/* Two levers: forward both, a turn to the right the left engine ahead
++	 * of the right one */
++	const bool twin = g_twin.load();
++	const float left_y = twin ? std::clamp(stick_y - stick_x, -1.0f, 1.0f) : stick_y;
++	const float right_y = twin ? std::clamp(stick_y + stick_x, -1.0f, 1.0f) : 0.0f;
++
++	SDL_SetJoystickVirtualAxis(joystick, 0, axis(twin ? 0.0f : stick_x));
++	SDL_SetJoystickVirtualAxis(joystick, 1, axis(left_y));
++	SDL_SetJoystickVirtualAxis(joystick, 2, 0);
++	SDL_SetJoystickVirtualAxis(joystick, 3, axis(right_y));
++	SDL_SetJoystickVirtualAxis(joystick, 4, trigger_l ? 32767 : -32768);
++	SDL_SetJoystickVirtualAxis(joystick, 5, trigger_r ? 32767 : -32768);
 +	for (size_t b = 0; b < std::size(MASK_BUTTONS); b++)
 +		SDL_SetJoystickVirtualButton(joystick, static_cast<int>(b),
 +		                             buttons[static_cast<size_t>(MASK_BUTTONS[b])]);
@@ -1610,6 +1628,7 @@ index 0000000..356a72d
 +	desc.naxes = SDL_GAMEPAD_AXIS_COUNT;
 +	desc.nbuttons = SDL_GAMEPAD_BUTTON_COUNT;
 +	desc.axis_mask = (1u << SDL_GAMEPAD_AXIS_LEFTX) | (1u << SDL_GAMEPAD_AXIS_LEFTY) |
++	                 (1u << SDL_GAMEPAD_AXIS_RIGHTX) | (1u << SDL_GAMEPAD_AXIS_RIGHTY) |
 +	                 (1u << SDL_GAMEPAD_AXIS_LEFT_TRIGGER) | (1u << SDL_GAMEPAD_AXIS_RIGHT_TRIGGER);
 +	desc.button_mask = 0;
 +	for (const SDL_GamepadButton button : MASK_BUTTONS)
@@ -1642,6 +1661,12 @@ index 0000000..356a72d
 +	}
 +	if (id)
 +		SDL_DetachVirtualJoystick(id);
++}
++
++void
++touch_pad_twin_levers(bool on)
++{
++	g_twin = on;
 +}
 +
 +void
@@ -1853,10 +1878,10 @@ index 0000000..356a72d
 +} /* namespace odin */
 diff --git a/src/odin/host/input/touch_pad.hpp b/src/odin/host/input/touch_pad.hpp
 new file mode 100644
-index 0000000..d8b10a4
+index 0000000..fdea144
 --- /dev/null
 +++ b/src/odin/host/input/touch_pad.hpp
-@@ -0,0 +1,49 @@
+@@ -0,0 +1,53 @@
 +/*
 + *  ██████╗ ██████╗ ██╗███╗   ██╗
 + * ██╔═══██╗██╔══██╗██║████╗  ██║
@@ -1900,6 +1925,10 @@ index 0000000..d8b10a4
 +void touch_pad_attach();
 +void touch_pad_detach();
 +void touch_pad_draw();
++/* A game steered by two levers, one an engine (stick_y and stick2_y, no
++ * stick_x: Star Wars Racer Arcade): the one stick of the pad works both,
++ * forward together, left and right one against the other */
++void touch_pad_twin_levers(bool on);
 +/* The frames per second, shown in a corner of the pad (0: none yet) */
 +void touch_pad_speed(float fps);
 +

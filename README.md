@@ -74,6 +74,9 @@ par seconde** en course : la carte graphique travaille environ 9 ms sur les
   | LB / RB | UP / DOWN |
   | X / B | LEFT / RIGHT (les deux boutons de la borne) |
   | LT / RT | ROLL : incliner la planche à gauche / à droite |
+- **Star Wars Racer Arcade** (deux leviers, un par moteur, comme la borne) : le
+  stick tactile pousse les deux moteurs ensemble vers l'avant, et gauche /
+  droite donne plus de puissance à un moteur qu'à l'autre pour tourner.
 - **Raccourcis** : le bouton **•••** (à droite de MENU) ouvre un panneau de gros
   boutons pour les touches qu'un téléphone n'a pas : SAVE / LOAD (l'état, F2 /
   F4), PAUSE (P), RESET (Ctrl+R), **TEST** et **SERVICE** (0 / 9, les boutons de
