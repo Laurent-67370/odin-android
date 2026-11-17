@@ -4,21 +4,30 @@
  * A formation marches from side to side and down, faster as it thins out;
  * the fighter at the bottom shoots it, two shots at a time, from behind four
  * shields the bombs and the shots wear away. A raider crosses the top now
- * and then. Three fighters, a new wave lower each time the formation is
- * cleared.
+ * and then. The waves change: the shape of the formation, armoured aliens
+ * that take two hits, divers that leave it to swoop on the fighter, and a
+ * mothership every fifth wave. Sound by the AICA; the best score kept in
+ * the backup RAM.
  *
  * Copyright (C) 2026 the odin-android contributors
  * GPL 3 or later, as Odin.
  */
 #include "gfx.h"
+#include "sound.h"
 #include "sprites.h"
 
 #define Z 2			/* the sprites twice their size */
+
+/* For the tests: the wave a game starts at (build.py --start-wave) */
+#ifndef START_WAVE
+#define START_WAVE 1
+#endif
 
 /* ---- the field ----------------------------------------------------------- */
 
 #define TOP       44		/* below the scores */
 #define GROUND    452		/* the line under the fighter */
+#define FIGHTER_W (15 * Z)
 #define FIGHTER_Y (GROUND - 8 * Z - 6)
 
 #define COLS      10
@@ -33,41 +42,68 @@
 #define SHIELD_H  16
 #define SHIELD_Y  (FIGHTER_Y - 60)
 
-#define BOMBS     4
+#define BOMBS     6
 #define SHOTS     2		/* the fighter's shots in the air at once */
 #define SHOT_SPEED 12
 #define FIRE_KEPT 12		/* frames a press waits for a free shot */
+#define DIVERS    3
+
+#define BOSS_Z    3
+#define BOSS_W    (32 * BOSS_Z)
+#define BOSS_H    (13 * BOSS_Z)
+
+/* The voices of the AICA, one a kind of sound */
+enum { V_SHOT, V_BOOM, V_BLAST, V_STEP, V_SIREN, V_JINGLE, V_CLANG, V_SWOOP };
+
+/* Where the best score is kept in the backup RAM */
+#define RECORD_AT 0xF000u
+#define RECORD_MAGIC 0x4753564Eu	/* "NVSG" */
 
 typedef enum { TITLE, PLAY, DYING, CLEARED, OVER } state_t;
+
+typedef struct {
+	int on, r, c;		/* its place in the formation */
+	int x, y, t;
+	int back;		/* gone past the ground, flying back to its place */
+	int hp, armoured;
+} diver_t;
 
 static struct {
 	state_t state;
 	unsigned timer, frame;
-	unsigned score, hi, lives, wave;
+	unsigned score, hi, kept_hi, lives, wave;
+	unsigned banner;	/* frames the name of the wave is shown */
 
-	/* the formation */
-	uint8_t alive[ROWS][COLS];
+	/* the formation: the hits each alien still takes (0: none there) */
+	uint8_t hp[ROWS][COLS];
+	uint8_t armoured[ROWS][COLS];
 	int left;		/* its first column's x */
 	int top;		/* its first row's y */
 	int dir;		/* +1, -1 */
-	unsigned count, step_wait, pose;
+	unsigned count, step_wait, pose, steps;
+	unsigned dive_wait;
+	diver_t divers[DIVERS];
+
+	/* the mothership */
+	int boss_on, boss_x, boss_y, boss_dir, boss_hp, boss_max;
+	unsigned boss_fire, boss_flash;
 
 	/* the fighter and its shots; a press kept while none is free */
 	int x;
 	int shot_on[SHOTS], shot_x[SHOTS], shot_y[SHOTS];
 	unsigned fire_kept;
 
-	int bomb_on[BOMBS], bomb_x[BOMBS], bomb_y[BOMBS];
+	int bomb_on[BOMBS], bomb_x[BOMBS], bomb_y[BOMBS], bomb_dx[BOMBS];
 
 	int raider_on, raider_x, raider_dir;
 	unsigned raider_wait;
 
 	/* what blew up, shown a few frames */
-	int boom_x, boom_y;
+	int boom_x, boom_y, boom_z;
 	unsigned boom_time;
 	const sprite_t *boom;
 	unsigned bonus, bonus_time;
-	int bonus_x;
+	int bonus_x, bonus_y;
 
 	uint8_t shield[SHIELDS][SHIELD_H][SHIELD_W];
 } g;
@@ -88,11 +124,71 @@ static unsigned rnd(unsigned n)
 #define GREY      rgb(150, 150, 180)
 #define YELLOW    rgb(250, 220, 80)
 #define RED       rgb(250, 80, 60)
+#define ORANGE    rgb(250, 150, 40)
+
+/* ---- the sound -------------------------------------------------------------- */
+
+/* Left to right as the screen, gently */
+static int pan_of(int x)
+{
+	const int p = (x - SCREEN_W / 2) / 40;
+	return p < -7 ? -7 : p > 7 ? 7 : p;
+}
+
+/* ---- the best score ---------------------------------------------------------- */
+
+static void record_load(void)
+{
+	uint32_t r[3];
+
+	backup_read(RECORD_AT, r, sizeof(r));
+	if (r[0] == RECORD_MAGIC && (r[1] ^ 0x5A5A5A5Au) == r[2] && r[1] < 1000000u)
+		g.hi = g.kept_hi = r[1];
+}
+
+static void record_keep(void)
+{
+	if (g.hi <= g.kept_hi)
+		return;
+	const uint32_t r[3] = { RECORD_MAGIC, g.hi, g.hi ^ 0x5A5A5A5Au };
+	backup_write(RECORD_AT, r, sizeof(r));
+	g.kept_hi = g.hi;
+}
+
+/* ---- the waves ------------------------------------------------------------------ */
+
+static int boss_wave(void)
+{
+	return g.wave % 5 == 0;
+}
+
+/* The shape of the formation, four in turn */
+static int in_shape(unsigned shape, int r, int c)
+{
+	switch (shape % 4) {
+	case 1:	/* a wedge, its point up */
+		return (c * 2 - (COLS - 1) <= r * 2 + 1) && ((COLS - 1) - c * 2 <= r * 2 + 1);
+	case 2:	/* two blocks */
+		return c < 4 || c > 5;
+	case 3:	/* a checkerboard, the top row whole */
+		return r == 0 || ((r + c) & 1) == 0;
+	default:
+		return 1;
+	}
+}
+
+static const char *shape_name(unsigned shape)
+{
+	static const char *const names[4] = { "THE WALL", "THE WEDGE", "THE PINCERS", "THE CHECKERS" };
+	return names[shape % 4];
+}
 
 /* ---- the formation -------------------------------------------------------- */
 
-static const sprite_t *alien_sprite(int row, unsigned pose)
+static const sprite_t *alien_sprite(int row, int armoured, int hp, unsigned pose)
 {
+	if (armoured)
+		return hp < 2 ? &spr_tank_cracked : pose ? &spr_tank_1 : &spr_tank_0;
 	if (row == 0)
 		return pose ? &spr_watcher_1 : &spr_watcher_0;
 	if (row < 3)
@@ -100,9 +196,9 @@ static const sprite_t *alien_sprite(int row, unsigned pose)
 	return pose ? &spr_beetle_1 : &spr_beetle_0;
 }
 
-static unsigned alien_points(int row)
+static unsigned alien_points(int row, int armoured)
 {
-	return row == 0 ? 30 : row < 3 ? 20 : 10;
+	return armoured ? 40 : row == 0 ? 30 : row < 3 ? 20 : 10;
 }
 
 static int alien_x(int c)
@@ -171,66 +267,109 @@ static int shield_hit(int px, int py)
 	return 0;
 }
 
-/* The formation reaching the shields wipes out what it covers */
-static void shields_trample(void)
+/* A box going over the shields wipes out what it covers */
+static void shields_trample(int x, int y, int w, int h)
 {
-	for (int r = ROWS - 1; r >= 0; r--)
-		for (int c = 0; c < COLS; c++) {
-			if (!g.alive[r][c])
-				continue;
-			const int ay = alien_y(r) + ALIEN_H;
-			if (ay < SHIELD_Y)
-				continue;
-			for (int s = 0; s < SHIELDS; s++)
-				for (int y = 0; y < SHIELD_H && SHIELD_Y + y * Z < ay; y++)
-					for (int x = 0; x < SHIELD_W; x++) {
-						const int px = shield_x(s) + x * Z;
-						if (px + Z > alien_x(c) && px < alien_x(c) + ALIEN_W)
-							g.shield[s][y][x] = 0;
-					}
-		}
+	if (y + h < SHIELD_Y || y > SHIELD_Y + SHIELD_H * Z)
+		return;
+	for (int s = 0; s < SHIELDS; s++)
+		for (int cy = 0; cy < SHIELD_H; cy++)
+			for (int cx = 0; cx < SHIELD_W; cx++) {
+				const int px = shield_x(s) + cx * Z, py = SHIELD_Y + cy * Z;
+				if (px + Z > x && px < x + w && py + Z > y && py < y + h)
+					g.shield[s][cy][cx] = 0;
+			}
 }
 
 /* ---- the game ------------------------------------------------------------------ */
 
+static void clear_flying(void)
+{
+	for (int i = 0; i < SHOTS; i++)
+		g.shot_on[i] = 0;
+	g.fire_kept = 0;
+	for (int b = 0; b < BOMBS; b++)
+		g.bomb_on[b] = 0;
+}
+
 static void wave_start(void)
 {
+	const unsigned shape = (g.wave - 1) - (g.wave - 1) / 5;	/* the shapes, the boss waves left out */
+
+	g.count = 0;
 	for (int r = 0; r < ROWS; r++)
-		for (int c = 0; c < COLS; c++)
-			g.alive[r][c] = 1;
-	g.count = ROWS * COLS;
+		for (int c = 0; c < COLS; c++) {
+			/* armoured rows from the top: one from wave 3, two from 7, three from 11 */
+			const int armoured = (g.wave >= 3 && r == 0) || (g.wave >= 7 && r == 1) || (g.wave >= 11 && r == 2);
+			const int there = !boss_wave() && in_shape(shape, r, c);
+			g.hp[r][c] = (uint8_t)(there ? (armoured ? 2 : 1) : 0);
+			g.armoured[r][c] = (uint8_t)armoured;
+			g.count += there;
+		}
 	g.left = (SCREEN_W - COLS * CELL_W) / 2;
 	/* each wave a little lower, up to five */
 	g.top = TOP + 40 + (int)((g.wave - 1) % 6) * 14;
 	g.dir = 1;
 	g.step_wait = step_wait_of(g.count);
 	g.pose = 0;
-	for (int i = 0; i < SHOTS; i++)
-		g.shot_on[i] = 0;
-	g.fire_kept = 0;
-	for (int b = 0; b < BOMBS; b++)
-		g.bomb_on[b] = 0;
+	g.dive_wait = 240;
+	for (int d = 0; d < DIVERS; d++)
+		g.divers[d].on = 0;
+	clear_flying();
 	g.raider_on = 0;
+	sound_stop(V_SIREN);
 	g.raider_wait = 900 + rnd(600);
 	shields_build();
+	g.banner = 150;
+
+	g.boss_on = boss_wave();
+	if (g.boss_on) {
+		g.boss_max = g.boss_hp = 30 + 10 * (int)(g.wave / 5 - 1);
+		g.boss_x = (SCREEN_W - BOSS_W) / 2;
+		g.boss_y = TOP + 50;
+		g.boss_dir = 1;
+		g.boss_fire = 90;
+		g.boss_flash = 0;
+		g.count = 1;
+		sound_play(V_JINGLE, SND_WARNING, 1024, 13, 0);
+	}
 }
 
 static void game_start(void)
 {
 	g.score = 0;
 	g.lives = 3;
-	g.wave = 1;
-	g.x = (SCREEN_W - 15 * Z) / 2;
+	g.wave = START_WAVE;
+	g.x = (SCREEN_W - FIGHTER_W) / 2;
 	wave_start();
 	g.state = PLAY;
+	sound_play(V_JINGLE, SND_START, 1024, 13, 0);
 }
 
-static void explode(const sprite_t *what, int x, int y)
+static void explode(const sprite_t *what, int x, int y, int z)
 {
 	g.boom = what;
 	g.boom_x = x;
 	g.boom_y = y;
+	g.boom_z = z;
 	g.boom_time = 16;
+}
+
+static void show_bonus(unsigned points, int x, int y)
+{
+	g.bonus = points;
+	g.bonus_x = x;
+	g.bonus_y = y;
+	g.bonus_time = 90;
+}
+
+static void lose_planet(void)
+{
+	g.lives = 1;	/* the last one, lost now */
+	explode(&spr_blast, g.x - Z, FIGHTER_Y, Z);
+	sound_play(V_BLAST, SND_BLAST, 1024, 13, 0);
+	g.state = DYING;
+	g.timer = 120;
 }
 
 static void formation_step(void)
@@ -239,7 +378,7 @@ static void formation_step(void)
 	int first = COLS, last = -1, bottom = -1;
 	for (int c = 0; c < COLS; c++)
 		for (int r = 0; r < ROWS; r++)
-			if (g.alive[r][c]) {
+			if (g.hp[r][c]) {
 				if (c < first) first = c;
 				if (c > last) last = c;
 				if (r > bottom) bottom = r;
@@ -257,14 +396,36 @@ static void formation_step(void)
 		g.left += g.dir * step;
 	}
 	g.pose ^= 1;
-	shields_trample();
+	/* four notes going down, one a step */
+	static const unsigned notes[4] = { 1024, 912, 812, 768 };
+	sound_play(V_STEP, SND_STEP, notes[g.steps++ & 3], 12, 0);
+
+	for (int r = 0; r < ROWS; r++)
+		for (int c = 0; c < COLS; c++)
+			if (g.hp[r][c])
+				shields_trample(alien_x(c), alien_y(r), ALIEN_W, ALIEN_H);
 	/* down to the fighter: the planet is lost */
-	if (alien_y(bottom) + ALIEN_H >= FIGHTER_Y) {
-		g.lives = 0;
-		explode(&spr_blast, g.x - Z, FIGHTER_Y);
-		g.state = DYING;
-		g.timer = 120;
-	}
+	if (alien_y(bottom) + ALIEN_H >= FIGHTER_Y)
+		lose_planet();
+}
+
+static int free_bomb(void)
+{
+	for (int b = 0; b < BOMBS; b++)
+		if (!g.bomb_on[b])
+			return b;
+	return -1;
+}
+
+static void drop_bomb(int x, int y, int dx)
+{
+	const int b = free_bomb();
+	if (b < 0)
+		return;
+	g.bomb_on[b] = 1;
+	g.bomb_x[b] = x;
+	g.bomb_y[b] = y;
+	g.bomb_dx[b] = dx;
 }
 
 static void bombs_drop(void)
@@ -273,37 +434,210 @@ static void bombs_drop(void)
 	const unsigned chance = g.wave < 5 ? 40 - g.wave * 5 : 15;
 	if (rnd(chance))
 		return;
-	int b = 0;
-	while (b < BOMBS && g.bomb_on[b])
-		b++;
-	if (b == BOMBS)
-		return;
 	/* the lowest alien of a column, the one over the fighter more often */
 	int c = (int)rnd(COLS);
 	if (rnd(3) == 0) {
-		const int over = (g.x + 15 * Z / 2 - g.left) / CELL_W;
+		const int over = (g.x + FIGHTER_W / 2 - g.left) / CELL_W;
 		if (over >= 0 && over < COLS)
 			c = over;
 	}
 	for (int r = ROWS - 1; r >= 0; r--)
-		if (g.alive[r][c]) {
-			g.bomb_on[b] = 1;
-			g.bomb_x[b] = alien_x(c) + ALIEN_W / 2 - 1;
-			g.bomb_y[b] = alien_y(r) + ALIEN_H;
+		if (g.hp[r][c]) {
+			drop_bomb(alien_x(c) + ALIEN_W / 2 - 1, alien_y(r) + ALIEN_H, 0);
 			return;
 		}
 }
 
 static void fighter_hit(void)
 {
-	explode(&spr_blast, g.x - Z, FIGHTER_Y);
+	explode(&spr_blast, g.x - Z, FIGHTER_Y, Z);
+	sound_play(V_BLAST, SND_BLAST, 1024, 13, pan_of(g.x));
 	g.state = DYING;
 	g.timer = 100;
-	for (int i = 0; i < SHOTS; i++)
-		g.shot_on[i] = 0;
-	g.fire_kept = 0;
-	for (int b = 0; b < BOMBS; b++)
-		g.bomb_on[b] = 0;
+	clear_flying();
+}
+
+static int touches_fighter(int x, int y, int w, int h)
+{
+	return x + w > g.x + 2 && x < g.x + FIGHTER_W - 2 && y + h > FIGHTER_Y + 2 && y < FIGHTER_Y + 8 * Z;
+}
+
+/* ---- the divers --------------------------------------------------------------- */
+
+static void divers_launch(void)
+{
+	if (g.wave < 2 || boss_wave())
+		return;
+	if (g.dive_wait) {
+		g.dive_wait--;
+		return;
+	}
+	/* sooner as the waves go */
+	const unsigned base = g.wave < 10 ? 300 - g.wave * 20 : 100;
+	g.dive_wait = base + rnd(base);
+	int d = 0;
+	while (d < DIVERS && g.divers[d].on)
+		d++;
+	/* no more at once than the wave allows */
+	if (d == DIVERS || d >= (int)(1 + g.wave / 4))
+		return;
+	const int c = (int)rnd(COLS);
+	for (int r = ROWS - 1; r >= 0; r--)
+		if (g.hp[r][c]) {
+			diver_t *const v = &g.divers[d];
+			v->on = 1;
+			v->r = r;
+			v->c = c;
+			v->x = alien_x(c);
+			v->y = alien_y(r);
+			v->t = 0;
+			v->back = 0;
+			v->hp = g.hp[r][c];
+			v->armoured = g.armoured[r][c];
+			g.hp[r][c] = 0;
+			sound_play(V_SWOOP, SND_SWOOP, 1024, 11, pan_of(v->x));
+			return;
+		}
+}
+
+static void divers_move(void)
+{
+	for (int d = 0; d < DIVERS; d++) {
+		diver_t *const v = &g.divers[d];
+		if (!v->on)
+			continue;
+		v->t++;
+		if (!v->back) {
+			/* down, weaving toward the fighter */
+			v->y += 3 + (int)(g.wave > 6);
+			const int aim = g.x + FIGHTER_W / 2 - ALIEN_W / 2;
+			const int weave = ((v->t >> 4) & 1) ? 3 : -3;
+			v->x += (aim > v->x ? 2 : -2) + weave;
+			if (v->x < 0) v->x = 0;
+			if (v->x > SCREEN_W - ALIEN_W) v->x = SCREEN_W - ALIEN_W;
+			if (v->t % 40 == 20 && v->y < SHIELD_Y)
+				drop_bomb(v->x + ALIEN_W / 2, v->y + ALIEN_H, 0);
+			shields_trample(v->x, v->y, ALIEN_W, ALIEN_H);
+			if (touches_fighter(v->x, v->y, ALIEN_W, ALIEN_H)) {
+				v->on = 0;
+				g.count--;
+				g.step_wait = step_wait_of(g.count);
+				fighter_hit();
+				return;
+			}
+			if (v->y > GROUND) {
+				v->back = 1;
+				v->y = TOP - ALIEN_H;
+			}
+		} else {
+			/* back from the top to its place in the formation */
+			const int tx = alien_x(v->c), ty = alien_y(v->r);
+			v->x += tx > v->x + 3 ? 3 : tx < v->x - 3 ? -3 : tx - v->x;
+			v->y += ty > v->y + 3 ? 3 : ty < v->y - 3 ? -3 : ty - v->y;
+			if (v->x == tx && v->y == ty) {
+				g.hp[v->r][v->c] = (uint8_t)v->hp;
+				v->on = 0;
+			}
+		}
+	}
+}
+
+/* ---- the mothership ------------------------------------------------------------ */
+
+static void boss_move(void)
+{
+	if (!g.boss_on)
+		return;
+	/* faster as it is hurt */
+	const int speed = 2 + (g.boss_max - g.boss_hp) * 3 / g.boss_max;
+	g.boss_x += g.boss_dir * speed;
+	if (g.boss_x < 8 || g.boss_x > SCREEN_W - 8 - BOSS_W)
+		g.boss_dir = -g.boss_dir;
+	g.boss_y = TOP + 50 + (int)((g.frame >> 2) % 40 < 20 ? (g.frame >> 2) % 20 : 20 - (g.frame >> 2) % 20);
+	if (g.boss_flash)
+		g.boss_flash--;
+	if (g.boss_fire) {
+		g.boss_fire--;
+	} else {
+		/* a fan of three, five when it is half gone */
+		const int cx = g.boss_x + BOSS_W / 2, by = g.boss_y + BOSS_H;
+		drop_bomb(cx, by, 0);
+		drop_bomb(cx - 12, by, -1);
+		drop_bomb(cx + 12, by, 1);
+		if (g.boss_hp * 2 < g.boss_max) {
+			drop_bomb(cx - 30, by - 6, -2);
+			drop_bomb(cx + 30, by - 6, 2);
+		}
+		g.boss_fire = 70 - (unsigned)((g.boss_max - g.boss_hp) * 30 / g.boss_max);
+	}
+}
+
+/* Whether a shot at sx, sy hits the mothership; its end if it is the last hit */
+static int boss_hit(int sx, int sy)
+{
+	if (!g.boss_on || sx + 2 <= g.boss_x || sx >= g.boss_x + BOSS_W || sy >= g.boss_y + BOSS_H ||
+	    sy + 10 + SHOT_SPEED <= g.boss_y)
+		return 0;
+	g.boss_flash = 4;
+	if (--g.boss_hp > 0) {
+		g.score += 10;
+		sound_play(V_CLANG, SND_CLANG, 900 + rnd(250), 12, pan_of(sx));
+		return 1;
+	}
+	const unsigned points = 1000 * (g.wave / 5);
+	g.score += points;
+	show_bonus(points, g.boss_x + BOSS_W / 2 - 24, g.boss_y);
+	explode(&spr_blast, g.boss_x + BOSS_W / 2 - 24, g.boss_y, 3);
+	sound_play(V_BLAST, SND_BLAST, 800, 15, 0);
+	g.boss_on = 0;
+	g.count = 0;
+	return 1;
+}
+
+/* ---- a frame of play ------------------------------------------------------------ */
+
+static void alien_down(int x, int y, unsigned points)
+{
+	g.count--;
+	g.score += points;
+	g.step_wait = step_wait_of(g.count);
+	explode(&spr_boom, x, y, Z);
+	sound_play(V_BOOM, SND_BOOM, 960 + rnd(160), 13, pan_of(x));
+}
+
+/* A shot that hit an alien there: hit then */
+static int shot_hits_formation(int sx, int sy)
+{
+	for (int r = 0; r < ROWS; r++)
+		for (int c = 0; c < COLS; c++) {
+			if (!g.hp[r][c])
+				continue;
+			const int ax = alien_x(c), ay = alien_y(r);
+			/* from where the shot was to where it is: none slips through */
+			if (sx + 2 > ax && sx < ax + ALIEN_W && sy < ay + ALIEN_H && sy + 10 + SHOT_SPEED > ay) {
+				if (--g.hp[r][c] == 0)
+					alien_down(ax, ay, alien_points(r, g.armoured[r][c]));
+				else
+					sound_play(V_CLANG, SND_CLANG, 1300, 10, pan_of(ax));
+				return 1;
+			}
+		}
+	for (int d = 0; d < DIVERS; d++) {
+		diver_t *const v = &g.divers[d];
+		if (v->on && sx + 2 > v->x && sx < v->x + ALIEN_W && sy < v->y + ALIEN_H && sy + 10 + SHOT_SPEED > v->y) {
+			if (--v->hp == 0) {
+				v->on = 0;
+				/* twice the points out of the formation */
+				const unsigned points = 2 * alien_points(v->r, v->armoured);
+				alien_down(v->x, v->y, points);
+				show_bonus(points, v->x, v->y);
+			} else {
+				sound_play(V_CLANG, SND_CLANG, 1300, 10, pan_of(v->x));
+			}
+			return 1;
+		}
+	}
+	return 0;
 }
 
 static void play(uint16_t in, uint16_t pressed)
@@ -315,8 +649,8 @@ static void play(uint16_t in, uint16_t pressed)
 		g.x += 4;
 	if (g.x < 8)
 		g.x = 8;
-	if (g.x > SCREEN_W - 8 - 15 * Z)
-		g.x = SCREEN_W - 8 - 15 * Z;
+	if (g.x > SCREEN_W - 8 - FIGHTER_W)
+		g.x = SCREEN_W - 8 - FIGHTER_W;
 	/* a press fires as soon as a shot is free, within FIRE_KEPT frames */
 	if (pressed & (IN_B1 | IN_B2))
 		g.fire_kept = FIRE_KEPT;
@@ -328,6 +662,7 @@ static void play(uint16_t in, uint16_t pressed)
 				g.shot_x[i] = g.x + 7 * Z;
 				g.shot_y[i] = FIGHTER_Y - 8;
 				g.fire_kept = 0;
+				sound_play(V_SHOT, SND_SHOOT, 1024, 11, pan_of(g.x));
 				break;
 			}
 	}
@@ -338,39 +673,25 @@ static void play(uint16_t in, uint16_t pressed)
 			continue;
 		g.shot_y[i] -= SHOT_SPEED;
 		const int sx = g.shot_x[i], sy = g.shot_y[i];
-		if (sy < TOP || shield_hit(sx, sy) || shield_hit(sx, sy + 8)) {
+		if (sy < TOP || shield_hit(sx, sy) || shield_hit(sx, sy + 8) || shot_hits_formation(sx, sy) ||
+		    boss_hit(sx, sy)) {
 			g.shot_on[i] = 0;
 			continue;
 		}
-		for (int r = 0; r < ROWS && g.shot_on[i]; r++)
-			for (int c = 0; c < COLS; c++) {
-				if (!g.alive[r][c])
-					continue;
-				const int ax = alien_x(c), ay = alien_y(r);
-				/* from where the shot was to where it is: none slips through */
-				if (sx + 2 > ax && sx < ax + ALIEN_W && sy < ay + ALIEN_H && sy + 10 + SHOT_SPEED > ay) {
-					g.alive[r][c] = 0;
-					g.count--;
-					g.score += alien_points(r);
-					g.shot_on[i] = 0;
-					explode(&spr_boom, ax, ay);
-					g.step_wait = step_wait_of(g.count);
-					break;
-				}
-			}
-		if (g.shot_on[i] && g.raider_on && sy < TOP + 7 * Z + 4 && sx >= g.raider_x && sx < g.raider_x + 16 * Z) {
+		if (g.raider_on && sy < TOP + 7 * Z + 4 && sx >= g.raider_x && sx < g.raider_x + 16 * Z) {
 			static const unsigned bonuses[4] = { 50, 100, 150, 300 };
-			g.bonus = bonuses[rnd(4)];
-			g.score += g.bonus;
-			g.bonus_x = g.raider_x;
-			g.bonus_time = 90;
+			const unsigned points = bonuses[rnd(4)];
+			g.score += points;
+			show_bonus(points, g.raider_x, TOP + 6);
 			g.raider_on = 0;
 			g.shot_on[i] = 0;
-			explode(&spr_blast, g.raider_x, TOP + 4);
+			sound_stop(V_SIREN);
+			sound_play(V_JINGLE, SND_BONUS, 1024, 13, pan_of(g.raider_x));
+			explode(&spr_blast, g.raider_x, TOP + 4, Z);
 		}
 	}
 
-	/* the formation */
+	/* the formation, its divers, the mothership */
 	if (g.timer == 0) {
 		formation_step();
 		g.timer = g.step_wait;
@@ -379,19 +700,31 @@ static void play(uint16_t in, uint16_t pressed)
 	}
 	if (g.state != PLAY)
 		return;
+	divers_launch();
+	divers_move();
+	if (g.state != PLAY)
+		return;
+	boss_move();
 	if (g.count == 0) {
 		g.state = CLEARED;
-		g.timer = 120;
+		g.timer = 150;
+		sound_stop(V_SIREN);
+		g.raider_on = 0;
+		sound_play(V_JINGLE, SND_CLEARED, 1024, 13, 0);
 		return;
 	}
 
 	/* the bombs */
-	bombs_drop();
+	if (!g.boss_on)
+		bombs_drop();
 	for (int b = 0; b < BOMBS; b++) {
 		if (!g.bomb_on[b])
 			continue;
 		g.bomb_y[b] += 4 + (g.wave > 3);
-		if (g.bomb_y[b] > GROUND || shield_hit(g.bomb_x[b], g.bomb_y[b] + 10)) {
+		if (g.frame & 1)
+			g.bomb_x[b] += g.bomb_dx[b];
+		if (g.bomb_y[b] > GROUND || g.bomb_x[b] < 0 || g.bomb_x[b] > SCREEN_W ||
+		    shield_hit(g.bomb_x[b], g.bomb_y[b] + 10)) {
 			g.bomb_on[b] = 0;
 			continue;
 		}
@@ -405,21 +738,26 @@ static void play(uint16_t in, uint16_t pressed)
 			}
 		if (met)
 			continue;
-		if (g.bomb_y[b] + 10 > FIGHTER_Y + 2 && g.bomb_x[b] + 3 > g.x + 2 && g.bomb_x[b] < g.x + 15 * Z - 2) {
+		if (touches_fighter(g.bomb_x[b], g.bomb_y[b], 3, 10)) {
 			fighter_hit();
 			return;
 		}
 	}
 
-	/* the raider */
+	/* the raider, not over the mothership */
 	if (g.raider_on) {
 		g.raider_x += g.raider_dir * 2;
-		if (g.raider_x < -16 * Z || g.raider_x > SCREEN_W)
+		if (g.raider_x < -16 * Z || g.raider_x > SCREEN_W) {
 			g.raider_on = 0;
+			sound_stop(V_SIREN);
+		}
 	} else if (g.raider_wait == 0) {
-		g.raider_on = 1;
-		g.raider_dir = rnd(2) ? 1 : -1;
-		g.raider_x = g.raider_dir > 0 ? -16 * Z : SCREEN_W;
+		if (!g.boss_on) {
+			g.raider_on = 1;
+			g.raider_dir = rnd(2) ? 1 : -1;
+			g.raider_x = g.raider_dir > 0 ? -16 * Z : SCREEN_W;
+			sound_play(V_SIREN, SND_SIREN, 1024, 9, 0);
+		}
 		g.raider_wait = 1200 + rnd(900);
 	} else {
 		g.raider_wait--;
@@ -436,9 +774,9 @@ static void draw_centred(int y, const char *text, uint16_t colour, int scale)
 static void draw_scores(void)
 {
 	draw_text(12, 10, "SCORE", GREY, 2);
-	draw_number(12 + text_width("SCORE ", 2), 10, g.score, 5, WHITE, 2);
-	draw_text(SCREEN_W / 2 - text_width("HI 00000", 2) / 2, 10, "HI", GREY, 2);
-	draw_number(SCREEN_W / 2 - text_width("HI 00000", 2) / 2 + text_width("HI ", 2), 10, g.hi, 5, YELLOW, 2);
+	draw_number(12 + text_width("SCORE ", 2), 10, g.score, 6, WHITE, 2);
+	draw_text(SCREEN_W / 2 - text_width("HI 000000", 2) / 2 + 20, 10, "HI", GREY, 2);
+	draw_number(SCREEN_W / 2 - text_width("HI 000000", 2) / 2 + 20 + text_width("HI ", 2), 10, g.hi, 6, YELLOW, 2);
 	draw_text(SCREEN_W - 12 - text_width("WAVE 00", 2), 10, "WAVE", GREY, 2);
 	draw_number(SCREEN_W - 12 - text_width("00", 2), 10, g.wave, 2, WHITE, 2);
 }
@@ -451,20 +789,32 @@ static void draw_field(void)
 			for (int x = 0; x < SHIELD_W; x++)
 				if (g.shield[s][y][x])
 					fill_rect(shield_x(s) + x * Z, SHIELD_Y + y * Z, Z, Z, GREEN);
-	/* the formation */
+	/* the formation, its divers */
 	for (int r = 0; r < ROWS; r++)
 		for (int c = 0; c < COLS; c++)
-			if (g.alive[r][c])
-				draw_sprite_scaled(alien_sprite(r, g.pose), alien_x(c), alien_y(r), Z);
+			if (g.hp[r][c])
+				draw_sprite_scaled(alien_sprite(r, g.armoured[r][c], g.hp[r][c], g.pose), alien_x(c), alien_y(r), Z);
+	for (int d = 0; d < DIVERS; d++)
+		if (g.divers[d].on)
+			draw_sprite_scaled(alien_sprite(g.divers[d].r, g.divers[d].armoured, g.divers[d].hp, (g.frame >> 3) & 1),
+			                   g.divers[d].x, g.divers[d].y, Z);
+	/* the mothership and its strength */
+	if (g.boss_on) {
+		if (!(g.boss_flash & 2))
+			draw_sprite_scaled(&spr_mothership, g.boss_x, g.boss_y, BOSS_Z);
+		const int bar = 300 * g.boss_hp / g.boss_max;
+		fill_rect((SCREEN_W - 300) / 2, TOP - 2, 300, 6, rgb(60, 20, 20));
+		fill_rect((SCREEN_W - 300) / 2, TOP - 2, bar, 6, g.boss_hp * 4 < g.boss_max ? RED : ORANGE);
+	}
 	if (g.raider_on)
 		draw_sprite_scaled(&spr_raider, g.raider_x, TOP + 4, Z);
 	if (g.bonus_time) {
 		g.bonus_time--;
-		draw_number(g.bonus_x + 4, TOP + 6, g.bonus, 3, RED, 2);
+		draw_number(g.bonus_x + 4, g.bonus_y, g.bonus, g.bonus >= 1000 ? 4 : 3, RED, 2);
 	}
 	if (g.boom_time) {
 		g.boom_time--;
-		draw_sprite_scaled(g.boom, g.boom_x, g.boom_y, Z);
+		draw_sprite_scaled(g.boom, g.boom_x, g.boom_y, g.boom_z);
 	}
 	/* the shots, the bombs */
 	for (int i = 0; i < SHOTS; i++)
@@ -473,9 +823,10 @@ static void draw_field(void)
 	for (int b = 0; b < BOMBS; b++)
 		if (g.bomb_on[b]) {
 			const int wiggle = ((g.bomb_y[b] >> 3) & 1) ? 2 : 0;
-			fill_rect(g.bomb_x[b] + wiggle, g.bomb_y[b], 2, 4, YELLOW);
-			fill_rect(g.bomb_x[b] + 2 - wiggle, g.bomb_y[b] + 4, 2, 4, YELLOW);
-			fill_rect(g.bomb_x[b] + wiggle, g.bomb_y[b] + 8, 2, 3, YELLOW);
+			const uint16_t colour = g.bomb_dx[b] ? ORANGE : YELLOW;
+			fill_rect(g.bomb_x[b] + wiggle, g.bomb_y[b], 2, 4, colour);
+			fill_rect(g.bomb_x[b] + 2 - wiggle, g.bomb_y[b] + 4, 2, 4, colour);
+			fill_rect(g.bomb_x[b] + wiggle, g.bomb_y[b] + 8, 2, 3, colour);
 		}
 	/* the fighter, unless it is the one exploding */
 	if (g.state != DYING && g.state != OVER)
@@ -485,25 +836,37 @@ static void draw_field(void)
 	draw_number(12, GROUND + 8, g.lives, 1, WHITE, 2);
 	for (unsigned l = 1; l < g.lives && l < 6; l++)
 		draw_sprite(&spr_fighter, 30 + (int)l * 22, GROUND + 10);
+	/* the name of the wave as it comes */
+	if (g.banner && g.state == PLAY) {
+		g.banner--;
+		if (boss_wave()) {
+			if ((g.banner >> 3) & 1)
+				draw_centred(SCREEN_H / 2 - 10, "WARNING: MOTHERSHIP", RED, 3);
+		} else {
+			const unsigned shape = (g.wave - 1) - (g.wave - 1) / 5;
+			draw_centred(SCREEN_H / 2, shape_name(shape), GREY, 3);
+		}
+	}
 }
 
 static void draw_title(void)
 {
-	draw_centred(80, "NOVA SIEGE", YELLOW, 7);
-	draw_centred(150, "HOLD THE LINE", GREY, 2);
+	draw_centred(64, "NOVA SIEGE", YELLOW, 7);
+	draw_centred(130, "HOLD THE LINE", GREY, 2);
 
-	const sprite_t *table[4] = { &spr_raider, &spr_watcher_0, &spr_jelly_0, &spr_beetle_0 };
-	const char *points[4] = { "= ? MYSTERY", "= 30 POINTS", "= 20 POINTS", "= 10 POINTS" };
-	for (int i = 0; i < 4; i++) {
-		const int y = 200 + i * 40;
-		draw_sprite_scaled(table[i], 220 - table[i]->w * Z / 2, y, Z);
-		draw_text(260, y + 2, points[i], WHITE, 2);
+	const sprite_t *table[5] = { &spr_raider, &spr_tank_0, &spr_watcher_0, &spr_jelly_0, &spr_beetle_0 };
+	const char *points[5] = { "= ? MYSTERY", "= 40  TWO HITS", "= 30 POINTS", "= 20 POINTS", "= 10 POINTS" };
+	for (int i = 0; i < 5; i++) {
+		const int y = 172 + i * 34;
+		draw_sprite_scaled(table[i], 200 - table[i]->w * Z / 2, y, Z);
+		draw_text(240, y + 2, points[i], WHITE, 2);
 	}
+	draw_centred(345, "DIVERS SCORE DOUBLE  -  MOTHERSHIP EVERY 5TH WAVE", ORANGE, 1);
 	if (!input_ready())
-		draw_centred(380, "WAITING FOR THE I/O BOARD...", RED, 2);
+		draw_centred(385, "WAITING FOR THE I/O BOARD...", RED, 2);
 	else if ((g.frame >> 5) & 1)
 		draw_centred(380, "PRESS START", WHITE, 3);
-	draw_centred(440, "STICK: MOVE   A / B1: FIRE", GREY, 2);
+	draw_centred(445, "STICK: MOVE   A / B1: FIRE", GREY, 2);
 }
 
 /* ---- the loop ---------------------------------------------------------------------- */
@@ -514,10 +877,18 @@ void main(void)
 
 	layer_init();
 	input_init();
+	sound_init();
+	record_load();
+#ifdef RECORD_TEST	/* for the tests: a record kept at power-on */
+	g.hi = RECORD_TEST;
+	record_keep();
+#endif
 	g.state = TITLE;
 	g.wave = 1;
 	g.lives = 3;
 	wave_start();
+	g.banner = 0;
+	sound_stop(V_JINGLE);
 
 	for (;;) {
 		g.frame++;
@@ -541,15 +912,20 @@ void main(void)
 				if (g.lives == 0) {
 					g.state = OVER;
 					g.timer = 240;
+					sound_stop(V_SIREN);
+					g.raider_on = 0;
+					sound_play(V_JINGLE, SND_OVER, 1024, 13, 0);
+					record_keep();
 				} else {
 					g.state = PLAY;
-					g.x = (SCREEN_W - 15 * Z) / 2;
+					g.x = (SCREEN_W - FIGHTER_W) / 2;
 				}
 			}
 			break;
 		case CLEARED:
 			if (--g.timer == 0) {
 				g.wave++;
+				record_keep();
 				wave_start();
 				g.state = PLAY;
 			}
@@ -561,6 +937,7 @@ void main(void)
 		}
 		if (g.score > g.hi)
 			g.hi = g.score;
+		sound_frame();
 
 		clear(SKY);
 		draw_scores();
@@ -570,8 +947,11 @@ void main(void)
 			draw_field();
 			if (g.state == CLEARED)
 				draw_centred(SCREEN_H / 2 - 20, "WAVE CLEARED", YELLOW, 4);
-			if (g.state == OVER)
+			if (g.state == OVER) {
 				draw_centred(SCREEN_H / 2 - 40, "GAME OVER", RED, 6);
+				if (g.score && g.score == g.hi)
+					draw_centred(SCREEN_H / 2 + 30, "NEW RECORD!", YELLOW, 3);
+			}
 		}
 		screen_flip();
 	}

@@ -144,6 +144,8 @@ par seconde** en course : la carte graphique travaille environ 9 ms sur les
 - Pas de X11 ni d'evdev ; sélecteurs de dossiers remplacés par `Odin/roms`.
 - Fenêtre en plein écran pour SDL (mode immersif) ; menu agrandi au facteur
   entier de la densité de l'écran quand il garde 760×340 points.
+- La mémoire sauvegardée de la borne (records, réglages) est écrite quand
+  l'app passe en arrière-plan : Android peut la tuer sans la fermer.
 - Vulkan : nouvelle surface quand l'app revient au premier plan (Android lui
   donne une nouvelle fenêtre) ; chaîne d'images refaite seulement quand la
   fenêtre change de taille.
@@ -172,7 +174,9 @@ Le dossier [`homebrew/`](homebrew/) contient un programme fait maison pour la
 borne SEGA Hikaru : il démarre par le BIOS SEGA comme un vrai jeu, affiche
 par la couche 2D et lit les commandes par le JVS. Le jeu, **NOVA SIEGE**, est un jeu de
 tir à écran fixe original : une formation d'aliens qui marche et accélère, des
-boucliers destructibles, un pillard bonus, des vagues successives.
+boucliers destructibles, un pillard bonus, des vagues qui changent de forme,
+des blindés, des plongeurs, un vaisseau-mère toutes les 5 vagues, du son et
+un record gardé.
 
 Pour y jouer sur le téléphone : télécharger
 [odinhb.zip](https://github.com/Laurent-67370/odin-android/releases/download/odin-apk/odinhb.zip)

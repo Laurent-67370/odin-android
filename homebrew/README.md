@@ -5,13 +5,33 @@ l'émule : un vrai programme pour son processeur SH-4, lancé par le BIOS
 SEGA comme les jeux d'origine.
 
 Le jeu : **NOVA SIEGE**, un jeu de tir à écran fixe, original. Une
-formation de 50 aliens avance de côté et descend à chaque bord, de plus en
-plus vite à mesure qu'elle se vide ; le chasseur en bas tire (deux tirs à
-la fois ; un appui fait pendant que les deux volent part dès qu'un tir se
-libère) depuis l'abri de quatre boucliers que les tirs et les bombes rongent.
-Un pillard traverse le haut de l'écran de temps en temps : 50 à 300 points.
-Trois chasseurs ; chaque vague nettoyée revient un peu plus bas. Record de la
-session en haut de l'écran.
+formation d'aliens avance de côté et descend à chaque bord, de plus en plus
+vite à mesure qu'elle se vide ; le chasseur en bas tire (deux tirs à la fois ;
+un appui fait pendant que les deux volent part dès qu'un tir se libère) depuis
+l'abri de quatre boucliers que les tirs et les bombes rongent. Un pillard
+traverse le haut de l'écran de temps en temps : 50 à 300 points. Trois
+chasseurs.
+
+Les vagues changent :
+
+- **la forme de la formation**, quatre à tour de rôle : le mur, le coin, les
+  pinces, le damier (son nom s'affiche au début de la vague) ;
+- **des blindés** (orange, 40 points) qui encaissent deux tirs : la rangée du
+  haut dès la vague 3, deux rangées dès la 7, trois dès la 11 ;
+- **des plongeurs** dès la vague 2 : un alien quitte la formation et fond sur
+  le chasseur en zigzaguant, puis revient à sa place par le haut ; abattu en
+  vol, il rapporte le double ;
+- **un vaisseau-mère toutes les 5 vagues**, annoncé par une alarme : une
+  barre de vie, des tirs en éventail (trois, puis cinq quand il est à moitié
+  détruit), plus rapide à mesure qu'il est touché ; 1000 points par cycle.
+
+**Le son** : tirs, explosions, les quatre notes du pas de la formation (qui
+accélèrent avec elle), la sirène du pillard, le tintement des coups sur les
+blindés et le vaisseau-mère, la plongée, les jingles de départ, de vague
+nettoyée et de fin de partie. Tout est synthétisé par `tools/sounds.py`.
+
+**Le record** est gardé dans la RAM sauvegardée de la borne : il reste d'une
+partie et d'un lancement à l'autre.
 
 | Commande | Action |
 |---|---|
@@ -21,10 +41,13 @@ session en haut de l'écran.
 
 | Ennemi | Points |
 |---|---|
+| Blindé (orange, deux tirs) | 40 |
 | Guetteur (rose, rangée du haut) | 30 |
 | Méduse (bleue, 2 rangées) | 20 |
 | Scarabée (vert, 2 rangées du bas) | 10 |
 | Pillard (rouge, de passage) | 50, 100, 150 ou 300 |
+| Plongeur abattu en vol | le double de son espèce |
+| Vaisseau-mère | 10 par coup, 1000 × cycle à la fin |
 
 Pendant la dizaine de secondes où la carte d'entrées-sorties s'initialise,
 l'écran titre affiche « WAITING FOR THE I/O BOARD... ».
@@ -95,6 +118,24 @@ Deux images de la couche 1 sont dans la mémoire d'image (lignes 1024 et
   (`spr_<nom>`) à la construction ; les pixels transparents ne sont pas
   dessinés (`draw_sprite`, `draw_sprite_scaled`).
 
+### Le son : l'AICA
+
+La carte son est sur le bus externe, page `0C` : le contrôleur mémoire ouvre
+la fenêtre `02000000` sur elle (octet `1A` de ses registres, à `04000000`).
+Ses registres sont à `02700000`, sa mémoire d'échantillons à `02800000`. Le
+jeu tient l'ARM7 de la carte en reset (registre `2C00`) et joue lui-même
+les voix : ce sont celles de l'AICA de la Dreamcast (`src/sound.c`).
+`KYONEX` déclenche ou coupe toutes les voix selon leur `KYONB` : une voix
+qui a fini garde son `KYONB` effacé un peu avant sa fin, pour ne pas
+repartir au prochain déclenchement.
+
+### Le record : la RAM sauvegardée
+
+64 Ko à `00C00000`, sur pile sur la borne, qu'Odin garde dans le fichier
+`nvram` du jeu. Le record y est à `F000` (une signature, le score, un
+contrôle). Odin l'écrit à la fermeture et, sur Android, quand l'application
+passe en arrière-plan.
+
 ### Les commandes : le MIE et le JVS
 
 Les commandes passent par le **MIE**, un Z80 qui parle à la carte
@@ -118,6 +159,8 @@ dialogue par une boîte aux lettres en mémoire du Z80 :
 |---|---|
 | `src/hikaru.h`, `src/hikaru.c` | la borne : couche 2D et double tampon, image suivante, commandes |
 | `src/gfx.h`, `src/gfx.c` | le dessin : effacer, rectangles, sprites, texte, nombres |
+| `src/sound.h`, `src/sound.c` | le son : les voix de l'AICA |
+| `tools/sounds.py` | les sons, synthétisés |
 | `src/main.c` | le jeu, NOVA SIEGE |
 | `assets/*.png` | les sprites (aliens en deux poses, chasseur, pillard, explosions) |
 | `tools/sprites.py` | les sprites dessinés en texte : il écrit `assets/*.png` |
@@ -131,4 +174,10 @@ dialogue par une boîte aux lettres en mémoire du Z80 :
   BIOS 0.92 et 0.84 ne sont pas encore pris en charge.
 - Les commandes ne répondent qu'une dizaine de secondes après le lancement
   (l'initialisation de la carte JVS).
-- Pas encore de son ni de 3D.
+- Pas encore de 3D ni de musique de fond.
+
+## Tester
+
+`build.py --start-wave N` fabrique une ROM qui commence à la vague N (5 : le
+vaisseau-mère) ; `--define RECORD_TEST=1234` écrit ce record au lancement.
+Dans Odin sur PC, `ODIN_WAV=son.wav` enregistre le son de la borne.

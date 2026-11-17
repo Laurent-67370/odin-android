@@ -172,3 +172,21 @@ int input_test(void)
 {
 	return (cabinet & 0x80) != 0;
 }
+
+/* ---- backup RAM ---------------------------------------------------------- */
+
+#define BACKUP ((volatile uint8_t *)0xA0C00000u)
+
+void backup_read(unsigned offset, void *to, unsigned size)
+{
+	uint8_t *out = to;
+	for (unsigned i = 0; i < size && offset + i < 0x10000u; i++)
+		out[i] = BACKUP[offset + i];
+}
+
+void backup_write(unsigned offset, const void *from, unsigned size)
+{
+	const uint8_t *in = from;
+	for (unsigned i = 0; i < size && offset + i < 0x10000u; i++)
+		BACKUP[offset + i] = in[i];
+}

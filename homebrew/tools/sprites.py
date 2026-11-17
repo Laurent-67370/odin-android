@@ -75,6 +75,53 @@ gggwkggkwggg
 .g........g.
 g..........g
 """,
+# Armoured, 40 points, two hits: a plated crawler (its cracked look after a hit)
+'tank_0': """
+...oooooo...
+..oyyyyyyo..
+.oyokkkkoyo.
+oooyowwoyooo
+oyyyyyyyyyyo
+.o.oyooyo.o.
+o..o....o..o
+..o......o..
+""",
+'tank_1': """
+...oooooo...
+..oyyyyyyo..
+.oyowwwwoyo.
+oooyokkoyooo
+oyyyyyyyyyyo
+.o.oyooyo.o.
+.o.o....o.o.
+o..........o
+""",
+'tank_cracked': """
+...oo.ooo...
+..oy.yy.yo..
+.oyokk.koyo.
+oo.yowwoy.oo
+oyy.yyyy.yyo
+.o.oyo.yo.o.
+o..o....o..o
+..o......o..
+""",
+# The mothership of every fifth wave
+'mothership': """
+............rrrrrrrr............
+.........rrrRRRRRRRRrrr.........
+.......rrRRRwwwwwwwwRRRrr.......
+.....rrRRRRwwkkwwkkwwRRRRrr.....
+...rrRRRRRRwwkkwwkkwwRRRRRRrr...
+..rRRRRRRRRRwwwwwwwwRRRRRRRRRr..
+.rrrrrrrrrrrrrrrrrrrrrrrrrrrrrr.
+rRyyRRyyRRyyRRyyRRyyRRyyRRyyRRyr
+rrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrr
+.rRRR..RRRR..RRRRRR..RRRR..RRRr.
+..rR....rR....rRRr....rR....Rr..
+...o.....o.....oo.....o.....o...
+...y.....y.....yy.....y.....y...
+""",
 # The player: a delta-wing fighter
 'fighter': """
 .......w.......
