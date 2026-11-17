@@ -18,7 +18,7 @@ import argparse, json, os, struct, subprocess, zipfile, zlib
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 OUT = os.path.join(HERE, 'build')
-NAME, TITLE = 'odinhb', 'Odin Homebrew'
+NAME, TITLE = 'odinhb', 'Nova Siege'
 LOAD = 0x8C100000          # where the program runs (link.ld)
 PROG_AT = 0x1000           # where it is in the EPROMs
 CHIP = 2 << 20             # two 2 MB EPROMs, 16 bits each in turn
