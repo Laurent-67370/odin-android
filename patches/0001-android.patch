@@ -310,7 +310,7 @@ index 31918b5..3ac4953 100644
  #else
  inline constexpr DisplayApi API = DisplayApi::OPENGL;
 diff --git a/src/odin/host/app/session.cpp b/src/odin/host/app/session.cpp
-index 094c084..af43055 100644
+index 094c084..849dff2 100644
 --- a/src/odin/host/app/session.cpp
 +++ b/src/odin/host/app/session.cpp
 @@ -26,6 +26,7 @@
@@ -321,7 +321,18 @@ index 094c084..af43055 100644
  
  #include <cstdio>
  #include <filesystem>
-@@ -481,7 +482,7 @@ Session::frames()
+@@ -89,6 +90,10 @@ Session::process_events()
+ 	bool quit = false;
+ 
+ 	while (SDL_PollEvent(&event)) {
++		/* Leaving the screen, the app may be killed without a word: the
++		 * records and settings of the cabinet kept now */
++		if (event.type == SDL_EVENT_WILL_ENTER_BACKGROUND || event.type == SDL_EVENT_DID_ENTER_BACKGROUND)
++			m_board.keep_now();
+ 		if (event.type == m_menus.picker_event()) {
+ 			take_folder();
+ 			continue;
+@@ -481,7 +486,7 @@ Session::frames()
  			m_audio->play(m_board.sound(false), m_board.sound(true));
  
  		/* The bar, or a note alone, over the frame */
@@ -3310,3 +3321,46 @@ index 42a24db..d7fcd6d 100644
  
  /* As SDL sends it (SDL_x11window.c): _NET_WM_STATE, remove FULLSCREEN, to
   * the root window */
+diff --git a/src/odin/machine/boards/board.hpp b/src/odin/machine/boards/board.hpp
+index f61eb8c..139bc96 100644
+--- a/src/odin/machine/boards/board.hpp
++++ b/src/odin/machine/boards/board.hpp
+@@ -46,6 +46,9 @@ public:
+ 	virtual unsigned frame() const = 0;
+ 	virtual void run_frame() = 0;
+ 	virtual bool restart_asked() const = 0;
++	/* What the board keeps without power (records, settings), written now:
++	 * Android kills an app in the background without closing it */
++	virtual bool keep_now() { return true; }
+ 	virtual bool save_state(const std::string &path) = 0;
+ 	virtual bool load_state(const std::string &path) = 0;
+ 	virtual std::span<const uint8_t> io_outputs() const = 0;
+diff --git a/src/odin/machine/boards/hikaru/hikaru.cpp b/src/odin/machine/boards/hikaru/hikaru.cpp
+index 0aedfda..0a3db61 100644
+--- a/src/odin/machine/boards/hikaru/hikaru.cpp
++++ b/src/odin/machine/boards/hikaru/hikaru.cpp
+@@ -1181,6 +1181,12 @@ Hikaru::power_off()
+ 		}
+ 	}
+ 
++	return keep_now();
++}
++
++bool
++Hikaru::keep_now()
++{
+ 	bool kept = true;
+ 
+ 	for (const auto &[name, bytes] : kept_memories())
+diff --git a/src/odin/machine/boards/hikaru/hikaru.hpp b/src/odin/machine/boards/hikaru/hikaru.hpp
+index cb9126f..fcbe8ea 100644
+--- a/src/odin/machine/boards/hikaru/hikaru.hpp
++++ b/src/odin/machine/boards/hikaru/hikaru.hpp
+@@ -139,6 +139,7 @@ public:
+ 	 * looking at them (the tests), the memories to <game>-<memory>.bin in
+ 	 * the current folder. */
+ 	bool power_off();
++	bool keep_now() override;
+ 
+ 	/* False, with the reason on stderr, if the state could not be written
+ 	 * or is not one of this game and build; the board is then as after a

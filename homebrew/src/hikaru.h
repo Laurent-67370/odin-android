@@ -58,4 +58,10 @@ uint16_t input_read(void);
 /* The Test switch of the cabinet */
 int input_test(void);
 
+/* ---- the backup RAM: 64 KB on a battery, kept by Odin ------------------ */
+
+/* Bytes of it, from `offset` (0 to 0xFFFF) */
+void backup_read(unsigned offset, void *to, unsigned size);
+void backup_write(unsigned offset, const void *from, unsigned size);
+
 #endif

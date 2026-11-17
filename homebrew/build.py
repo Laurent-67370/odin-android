@@ -22,7 +22,7 @@ NAME, TITLE = 'odinhb', 'Nova Siege'
 LOAD = 0x8C100000          # where the program runs (link.ld)
 PROG_AT = 0x1000           # where it is in the EPROMs
 CHIP = 2 << 20             # two 2 MB EPROMs, 16 bits each in turn
-SOURCES = ['crt0.S', 'hikaru.c', 'gfx.c', 'main.c']
+SOURCES = ['crt0.S', 'hikaru.c', 'gfx.c', 'sound.c', 'main.c']
 
 
 def font_header(gen):
@@ -71,20 +71,50 @@ def sprites_source(gen):
     open(os.path.join(gen, 'sprites.c'), 'w').write('\n'.join(c) + '\n')
 
 
-def compile_program():
+def sounds_source(gen):
+    """tools/sounds.py as sounds.h and sounds.c: 16-bit samples at 22050 Hz"""
+    import importlib.util
+    spec = importlib.util.spec_from_file_location('sounds', os.path.join(HERE, 'tools', 'sounds.py'))
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    table = module.generate()
+    h = ['/* Made by build.py from tools/sounds.py */', '#ifndef SOUNDS_H', '#define SOUNDS_H', '#include <stdint.h>',
+         'typedef struct { const int16_t *data; unsigned length; int loop_start; } sound_t;',
+         'enum {']
+    h += ['\tSND_%s,' % name.upper() for name, _, _ in table]
+    h += ['\tSOUND_COUNT', '};', 'extern const sound_t sounds[SOUND_COUNT];', '#endif']
+    c = ['/* Made by build.py from tools/sounds.py */', '#include "sounds.h"']
+    for name, samples, _ in table:
+        if len(samples) % 2:
+            samples = samples + [0]
+        c.append('static const int16_t %s_data[] = {' % name)
+        for i in range(0, len(samples), 16):
+            c.append('\t' + ', '.join(str(v) for v in samples[i:i + 16]) + ',')
+        c.append('};')
+    c.append('const sound_t sounds[SOUND_COUNT] = {')
+    for name, samples, loop in table:
+        length = len(samples) + (len(samples) % 2)
+        c.append('\t{ %s_data, %d, %d },' % (name, length, -1 if loop is None else loop))
+    c.append('};')
+    open(os.path.join(gen, 'sounds.h'), 'w').write('\n'.join(h) + '\n')
+    open(os.path.join(gen, 'sounds.c'), 'w').write('\n'.join(c) + '\n')
+
+
+def compile_program(flags=()):
     os.makedirs(OUT, exist_ok=True)
     gen = os.path.join(OUT, 'gen')
     os.makedirs(gen, exist_ok=True)
     font_header(gen)
     sprites_source(gen)
+    sounds_source(gen)
     elf, binary = os.path.join(OUT, NAME + '.elf'), os.path.join(OUT, NAME + '.bin')
     subprocess.check_call(['sh4-linux-gnu-gcc', '-m4', '-ml', '-O2', '-static', '-fno-pic', '-nostdlib',
                            '-ffreestanding', '-fno-builtin', '-Wall', '-Wextra',
                            '-Wl,--build-id=none', '-Wl,-z,noexecstack', '-Wl,--no-warn-rwx-segments',
-                           '-I', os.path.join(HERE, 'src'), '-I', gen,
+                           '-I', os.path.join(HERE, 'src'), '-I', gen, *flags,
                            '-T', os.path.join(HERE, 'src', 'link.ld')] +
                           [os.path.join(HERE, 'src', s) for s in SOURCES] +
-                          [os.path.join(gen, 'sprites.c'), '-o', elf, '-lgcc'])
+                          [os.path.join(gen, 'sprites.c'), os.path.join(gen, 'sounds.c'), '-o', elf, '-lgcc'])
     subprocess.check_call(['sh4-linux-gnu-objcopy', '-O', 'binary', elf, binary])
     return open(binary, 'rb').read()
 
@@ -146,9 +176,12 @@ def entry_of(chips, names):
 def main():
     parser = argparse.ArgumentParser()
     parser.add_argument('--games', help="add the entry to this odin-games.json")
+    parser.add_argument('--start-wave', type=int, help="for the tests: a game starts at this wave")
+    parser.add_argument('--define', action='append', default=[], help="for the tests: -D for the compiler")
     args = parser.parse_args()
 
-    program = compile_program()
+    flags = ['-DSTART_WAVE=%d' % args.start_wave] if args.start_wave else []
+    program = compile_program(flags + ['-D' + d for d in args.define])
     chips = rom_of(program)
     names = (NAME + '.ic29', NAME + '.ic30')
     with zipfile.ZipFile(os.path.join(OUT, NAME + '.zip'), 'w', zipfile.ZIP_DEFLATED) as z:
