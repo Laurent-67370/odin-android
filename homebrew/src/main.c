@@ -302,9 +302,9 @@ static void play(uint16_t in, uint16_t pressed)
 {
 	/* the fighter */
 	if (in & IN_LEFT)
-		g.x -= 3;
+		g.x -= 4;
 	if (in & IN_RIGHT)
-		g.x += 3;
+		g.x += 4;
 	if (g.x < 8)
 		g.x = 8;
 	if (g.x > SCREEN_W - 8 - 15 * Z)

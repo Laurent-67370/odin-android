@@ -53,7 +53,7 @@ enum {
 void input_init(void);
 /* Whether the JVS board answers yet (some ten seconds after input_init) */
 int input_ready(void);
-/* The switches of player 1 as the last poll gave them; asks for the next */
+/* The switches of player 1 now: a JVS poll, its answer waited for (some 4 ms) */
 uint16_t input_read(void);
 /* The Test switch of the cabinet */
 int input_test(void);
