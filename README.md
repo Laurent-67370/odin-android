@@ -77,6 +77,8 @@ par seconde** en course : la carte graphique travaille environ 9 ms sur les
     sensible** : un petit glissement du pouce suffit, sans pousser à
     mi-course. Les jeux à commande analogique (volant, manche) gardent toute
     la course.
+  - Une tape, même très brève, tient son bouton au moins 60 ms : le jeu la
+    voit toujours.
   - Une **courte vibration** confirme chaque appui (à couper avec la variable
     d'environnement `ODIN_NO_BUZZ`).
 - **Air Trix** sur la manette tactile :

@@ -6,8 +6,9 @@ SEGA comme les jeux d'origine.
 
 Le jeu : **NOVA SIEGE**, un jeu de tir à écran fixe, original. Une
 formation de 50 aliens avance de côté et descend à chaque bord, de plus en
-plus vite à mesure qu'elle se vide ; le chasseur en bas tire (un tir à la
-fois) depuis l'abri de quatre boucliers que les tirs et les bombes rongent.
+plus vite à mesure qu'elle se vide ; le chasseur en bas tire (deux tirs à
+la fois ; un appui fait pendant que les deux volent part dès qu'un tir se
+libère) depuis l'abri de quatre boucliers que les tirs et les bombes rongent.
 Un pillard traverse le haut de l'écran de temps en temps : 50 à 300 points.
 Trois chasseurs ; chaque vague nettoyée revient un peu plus bas. Record de la
 session en haut de l'écran.

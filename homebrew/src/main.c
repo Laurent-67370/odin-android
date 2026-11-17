@@ -2,7 +2,7 @@
  * main.c: NOVA SIEGE, a fixed shooter for the SEGA Hikaru under Odin.
  *
  * A formation marches from side to side and down, faster as it thins out;
- * the fighter at the bottom shoots it, one shot at a time, from behind four
+ * the fighter at the bottom shoots it, two shots at a time, from behind four
  * shields the bombs and the shots wear away. A raider crosses the top now
  * and then. Three fighters, a new wave lower each time the formation is
  * cleared.
@@ -34,6 +34,9 @@
 #define SHIELD_Y  (FIGHTER_Y - 60)
 
 #define BOMBS     4
+#define SHOTS     2		/* the fighter's shots in the air at once */
+#define SHOT_SPEED 12
+#define FIRE_KEPT 12		/* frames a press waits for a free shot */
 
 typedef enum { TITLE, PLAY, DYING, CLEARED, OVER } state_t;
 
@@ -49,9 +52,10 @@ static struct {
 	int dir;		/* +1, -1 */
 	unsigned count, step_wait, pose;
 
-	/* the fighter and its shot */
+	/* the fighter and its shots; a press kept while none is free */
 	int x;
-	int shot_on, shot_x, shot_y;
+	int shot_on[SHOTS], shot_x[SHOTS], shot_y[SHOTS];
+	unsigned fire_kept;
 
 	int bomb_on[BOMBS], bomb_x[BOMBS], bomb_y[BOMBS];
 
@@ -201,7 +205,9 @@ static void wave_start(void)
 	g.dir = 1;
 	g.step_wait = step_wait_of(g.count);
 	g.pose = 0;
-	g.shot_on = 0;
+	for (int i = 0; i < SHOTS; i++)
+		g.shot_on[i] = 0;
+	g.fire_kept = 0;
 	for (int b = 0; b < BOMBS; b++)
 		g.bomb_on[b] = 0;
 	g.raider_on = 0;
@@ -293,7 +299,9 @@ static void fighter_hit(void)
 	explode(&spr_blast, g.x - Z, FIGHTER_Y);
 	g.state = DYING;
 	g.timer = 100;
-	g.shot_on = 0;
+	for (int i = 0; i < SHOTS; i++)
+		g.shot_on[i] = 0;
+	g.fire_kept = 0;
 	for (int b = 0; b < BOMBS; b++)
 		g.bomb_on[b] = 0;
 }
@@ -309,47 +317,57 @@ static void play(uint16_t in, uint16_t pressed)
 		g.x = 8;
 	if (g.x > SCREEN_W - 8 - 15 * Z)
 		g.x = SCREEN_W - 8 - 15 * Z;
-	if ((pressed & (IN_B1 | IN_B2)) && !g.shot_on) {
-		g.shot_on = 1;
-		g.shot_x = g.x + 7 * Z;
-		g.shot_y = FIGHTER_Y - 8;
+	/* a press fires as soon as a shot is free, within FIRE_KEPT frames */
+	if (pressed & (IN_B1 | IN_B2))
+		g.fire_kept = FIRE_KEPT;
+	if (g.fire_kept) {
+		g.fire_kept--;
+		for (int i = 0; i < SHOTS; i++)
+			if (!g.shot_on[i]) {
+				g.shot_on[i] = 1;
+				g.shot_x[i] = g.x + 7 * Z;
+				g.shot_y[i] = FIGHTER_Y - 8;
+				g.fire_kept = 0;
+				break;
+			}
 	}
 
-	/* the shot */
-	if (g.shot_on) {
-		g.shot_y -= 10;
-		if (g.shot_y < TOP)
-			g.shot_on = 0;
-		else if (shield_hit(g.shot_x, g.shot_y) || shield_hit(g.shot_x, g.shot_y + 8))
-			g.shot_on = 0;
-	}
-	if (g.shot_on)
-		for (int r = 0; r < ROWS && g.shot_on; r++)
+	/* the shots */
+	for (int i = 0; i < SHOTS; i++) {
+		if (!g.shot_on[i])
+			continue;
+		g.shot_y[i] -= SHOT_SPEED;
+		const int sx = g.shot_x[i], sy = g.shot_y[i];
+		if (sy < TOP || shield_hit(sx, sy) || shield_hit(sx, sy + 8)) {
+			g.shot_on[i] = 0;
+			continue;
+		}
+		for (int r = 0; r < ROWS && g.shot_on[i]; r++)
 			for (int c = 0; c < COLS; c++) {
 				if (!g.alive[r][c])
 					continue;
 				const int ax = alien_x(c), ay = alien_y(r);
-				if (g.shot_x + 2 > ax && g.shot_x < ax + ALIEN_W && g.shot_y < ay + ALIEN_H &&
-				    g.shot_y + 10 > ay) {
+				/* from where the shot was to where it is: none slips through */
+				if (sx + 2 > ax && sx < ax + ALIEN_W && sy < ay + ALIEN_H && sy + 10 + SHOT_SPEED > ay) {
 					g.alive[r][c] = 0;
 					g.count--;
 					g.score += alien_points(r);
-					g.shot_on = 0;
+					g.shot_on[i] = 0;
 					explode(&spr_boom, ax, ay);
 					g.step_wait = step_wait_of(g.count);
 					break;
 				}
 			}
-	if (g.shot_on && g.raider_on && g.shot_y < TOP + 7 * Z + 4 && g.shot_x >= g.raider_x &&
-	    g.shot_x < g.raider_x + 16 * Z) {
-		static const unsigned bonuses[4] = { 50, 100, 150, 300 };
-		g.bonus = bonuses[rnd(4)];
-		g.score += g.bonus;
-		g.bonus_x = g.raider_x;
-		g.bonus_time = 90;
-		g.raider_on = 0;
-		g.shot_on = 0;
-		explode(&spr_blast, g.raider_x, TOP + 4);
+		if (g.shot_on[i] && g.raider_on && sy < TOP + 7 * Z + 4 && sx >= g.raider_x && sx < g.raider_x + 16 * Z) {
+			static const unsigned bonuses[4] = { 50, 100, 150, 300 };
+			g.bonus = bonuses[rnd(4)];
+			g.score += g.bonus;
+			g.bonus_x = g.raider_x;
+			g.bonus_time = 90;
+			g.raider_on = 0;
+			g.shot_on[i] = 0;
+			explode(&spr_blast, g.raider_x, TOP + 4);
+		}
 	}
 
 	/* the formation */
@@ -377,12 +395,16 @@ static void play(uint16_t in, uint16_t pressed)
 			g.bomb_on[b] = 0;
 			continue;
 		}
-		/* a bomb and the shot meet: both gone */
-		if (g.shot_on && g.bomb_x[b] + 3 > g.shot_x - 2 && g.bomb_x[b] < g.shot_x + 4 &&
-		    g.bomb_y[b] + 10 > g.shot_y && g.bomb_y[b] < g.shot_y + 10) {
-			g.bomb_on[b] = g.shot_on = 0;
+		/* a bomb and a shot meet: both gone */
+		int met = 0;
+		for (int i = 0; i < SHOTS && !met; i++)
+			if (g.shot_on[i] && g.bomb_x[b] + 3 > g.shot_x[i] - 2 && g.bomb_x[b] < g.shot_x[i] + 4 &&
+			    g.bomb_y[b] + 10 > g.shot_y[i] && g.bomb_y[b] < g.shot_y[i] + 10) {
+				g.bomb_on[b] = g.shot_on[i] = 0;
+				met = 1;
+			}
+		if (met)
 			continue;
-		}
 		if (g.bomb_y[b] + 10 > FIGHTER_Y + 2 && g.bomb_x[b] + 3 > g.x + 2 && g.bomb_x[b] < g.x + 15 * Z - 2) {
 			fighter_hit();
 			return;
@@ -444,9 +466,10 @@ static void draw_field(void)
 		g.boom_time--;
 		draw_sprite_scaled(g.boom, g.boom_x, g.boom_y, Z);
 	}
-	/* the shot, the bombs */
-	if (g.shot_on)
-		fill_rect(g.shot_x, g.shot_y, 2, 10, WHITE);
+	/* the shots, the bombs */
+	for (int i = 0; i < SHOTS; i++)
+		if (g.shot_on[i])
+			fill_rect(g.shot_x[i], g.shot_y[i], 2, 10, WHITE);
 	for (int b = 0; b < BOMBS; b++)
 		if (g.bomb_on[b]) {
 			const int wiggle = ((g.bomb_y[b] >> 3) & 1) ? 2 : 0;
