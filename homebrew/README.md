@@ -4,13 +4,31 @@ Un jeu fait maison qui tourne sur la borne **SEGA Hikaru** telle qu'Odin
 l'émule : un vrai programme pour son processeur SH-4, lancé par le BIOS
 SEGA comme les jeux d'origine.
 
-Pour l'instant : **une démo**. Un vaisseau se déplace au stick (ou aux
-flèches) et tire avec le bouton 1 sur des aliens qui descendent ; le score
-s'affiche en haut ; START change la couleur des étoiles. Pendant la dizaine de
-secondes où la carte d'entrées-sorties s'initialise, l'écran affiche
-« WAITING FOR THE I/O BOARD... ».
+Le jeu : **NOVA SIEGE**, un jeu de tir à écran fixe, original. Une
+formation de 50 aliens avance de côté et descend à chaque bord, de plus en
+plus vite à mesure qu'elle se vide ; le chasseur en bas tire (un tir à la
+fois) depuis l'abri de quatre boucliers que les tirs et les bombes rongent.
+Un pillard traverse le haut de l'écran de temps en temps : 50 à 300 points.
+Trois chasseurs ; chaque vague nettoyée revient un peu plus bas. Record de la
+session en haut de l'écran.
 
-![La démo dans Odin](docs/demo.png)
+| Commande | Action |
+|---|---|
+| Stick (ou flèches) gauche / droite | déplacer le chasseur |
+| A / bouton 1 (ou B / bouton 2) | tirer |
+| START | commencer une partie |
+
+| Ennemi | Points |
+|---|---|
+| Guetteur (rose, rangée du haut) | 30 |
+| Méduse (bleue, 2 rangées) | 20 |
+| Scarabée (vert, 2 rangées du bas) | 10 |
+| Pillard (rouge, de passage) | 50, 100, 150 ou 300 |
+
+Pendant la dizaine de secondes où la carte d'entrées-sorties s'initialise,
+l'écran titre affiche « WAITING FOR THE I/O BOARD... ».
+
+![NOVA SIEGE dans Odin : l'écran titre et une partie](docs/demo.png)
 
 ## Jouer sur le téléphone
 
@@ -19,10 +37,10 @@ L'APK connaît le jeu, et `odinhb.zip` est publié avec lui à chaque version :
 1. Télécharger
    [odinhb.zip](https://github.com/Laurent-67370/odin-android/releases/download/odin-apk/odinhb.zip).
 2. Le mettre dans `Odin/roms`, à côté de `hikaru.zip` et `mie.zip`.
-3. Lancer **Odin Homebrew** dans la liste des jeux.
+3. Lancer **Nova Siege** dans la liste des jeux.
 
-Manette tactile : le stick déplace le vaisseau, A tire, START change les
-étoiles. Après une mise à jour de l'APK qui change le homebrew, retélécharger
+Manette tactile : le stick déplace le chasseur, A tire, START lance la
+partie. Après une mise à jour de l'APK qui change le homebrew, retélécharger
 `odinhb.zip` : Odin vérifie que les EPROM sont celles que sa liste attend.
 
 ## Construire
@@ -35,7 +53,7 @@ python3 build.py --games chemin/vers/odin-games.json   # ajoute aussi le jeu à 
 
 `build/odinhb.zip` contient les deux EPROM du jeu (`odinhb.ic29` et
 `odinhb.ic30`). Il se met dans le dossier des ROM d'Odin, à côté de
-`hikaru.zip` et `mie.zip`. Le jeu s'appelle **Odin Homebrew** dans la liste.
+`hikaru.zip` et `mie.zip`. Le jeu s'appelle **Nova Siege** dans la liste.
 
 La ROM ne contient **aucun code de SEGA**. Il faut le BIOS de la borne
 (`hikaru.zip`, version 0.96) et `mie.zip`, comme pour les autres jeux Hikaru.
@@ -97,8 +115,9 @@ dialogue par une boîte aux lettres en mémoire du Z80 :
 |---|---|
 | `src/hikaru.h`, `src/hikaru.c` | la borne : couche 2D et double tampon, image suivante, commandes |
 | `src/gfx.h`, `src/gfx.c` | le dessin : effacer, rectangles, sprites, texte, nombres |
-| `src/main.c` | la démo |
-| `assets/*.png` | les sprites (le vaisseau, l'alien) |
+| `src/main.c` | le jeu, NOVA SIEGE |
+| `assets/*.png` | les sprites (aliens en deux poses, chasseur, pillard, explosions) |
+| `tools/sprites.py` | les sprites dessinés en texte : il écrit `assets/*.png` |
 | `tools/font5x7.txt` | la police |
 | `src/crt0.S`, `src/link.ld` | le démarrage du programme et son placement en mémoire |
 | `build.py` | génère la police et les sprites, compile, fabrique les EPROM et l'entrée de la liste des jeux |

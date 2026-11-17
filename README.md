@@ -163,14 +163,15 @@ par seconde** en course : la carte graphique travaille environ 9 ms sur les
 
 Le dossier [`homebrew/`](homebrew/) contient un programme fait maison pour la
 borne SEGA Hikaru : il démarre par le BIOS SEGA comme un vrai jeu, affiche
-par la couche 2D et lit les commandes par le JVS. C'est la base d'un futur jeu
-compatible avec Odin.
+par la couche 2D et lit les commandes par le JVS. Le jeu, **NOVA SIEGE**, est un jeu de
+tir à écran fixe original : une formation d'aliens qui marche et accélère, des
+boucliers destructibles, un pillard bonus, des vagues successives.
 
 Pour y jouer sur le téléphone : télécharger
 [odinhb.zip](https://github.com/Laurent-67370/odin-android/releases/download/odin-apk/odinhb.zip)
 (publié avec l'APK, construit à chaque version) et le mettre dans
-`Odin/roms`, à côté de `hikaru.zip` et `mie.zip`. Le jeu s'appelle **Odin
-Homebrew** dans la liste. Les commandes répondent une dizaine de secondes après
+`Odin/roms`, à côté de `hikaru.zip` et `mie.zip`. Le jeu s'appelle **Nova
+Siege** dans la liste. Les commandes répondent une dizaine de secondes après
 le lancement (l'écran l'indique).
 
 ## Construire soi-même
