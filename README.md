@@ -72,6 +72,11 @@ par seconde** en course : la carte graphique travaille environ 9 ms sur les
     regroupe plus jusqu'à l'image suivante de l'écran).
   - Le **stick flotte** : son centre se place là où le pouce se pose, près du
     cercle dessiné.
+  - Dans un jeu qui n'attend que des directions (haut, bas, gauche, droite :
+    Nova Siege, Gaelco Football, Virtual-On), le stick est **trois fois plus
+    sensible** : un petit glissement du pouce suffit, sans pousser à
+    mi-course. Les jeux à commande analogique (volant, manche) gardent toute
+    la course.
   - Une **courte vibration** confirme chaque appui (à couper avec la variable
     d'environnement `ODIN_NO_BUZZ`).
 - **Air Trix** sur la manette tactile :

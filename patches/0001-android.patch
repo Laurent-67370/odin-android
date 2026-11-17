@@ -1043,7 +1043,7 @@ index ea40540..b11bff6 100644
  }
  
 diff --git a/src/odin/host/input/controls.cpp b/src/odin/host/input/controls.cpp
-index c4acd40..47f95ad 100644
+index c4acd40..7cdb33e 100644
 --- a/src/odin/host/input/controls.cpp
 +++ b/src/odin/host/input/controls.cpp
 @@ -23,6 +23,7 @@
@@ -1054,7 +1054,7 @@ index c4acd40..47f95ad 100644
  #include "odin/host/input/wheels.hpp"
  
  #include "odin/host/audio/audio_out.hpp"
-@@ -170,6 +171,29 @@ Controls::Controls(Keyboard &keys, const std::vector<GameControl> &controls, con
+@@ -170,6 +171,34 @@ Controls::Controls(Keyboard &keys, const std::vector<GameControl> &controls, con
  		return;
  	}
  	m_on = true;
@@ -1080,11 +1080,16 @@ index c4acd40..47f95ad 100644
 +
 +		touch_pad_second_stick(!twin && second);
 +		touch_pad_aim_mode(analog(Role::GUN_X) && analog(Role::GUN_Y));
++		/* The sticks of a game of switches: up, down, left, right on their
++		 * halves, no analog control on them */
++		const bool analog_first = analog(Role::STEER) || analog(Role::STICK_X) || analog(Role::STICK_Y) ||
++		                          analog(Role::GUN_X) || analog(Role::GUN_Y);
++		touch_pad_quick_sticks(!analog_first && !twin, !analog(Role::STICK2_X) && !analog(Role::STICK2_Y));
 +	}
  	follow_cursor();
  }
  
-@@ -201,6 +225,7 @@ Controls::~Controls()
+@@ -201,6 +230,7 @@ Controls::~Controls()
  		SDL_CloseGamepad(pad.handle);
  	for (Joy &joy : m_joys)
  		SDL_CloseJoystick(joy.handle);
@@ -1092,7 +1097,7 @@ index c4acd40..47f95ad 100644
  	SDL_QuitSubSystem(SDL_INIT_GAMEPAD);
  }
  
-@@ -534,6 +559,10 @@ Controls::event(const SDL_Event &event)
+@@ -534,6 +564,10 @@ Controls::event(const SDL_Event &event)
  		return false;
  	switch (event.type) {
  	case SDL_EVENT_MOUSE_MOTION: {
@@ -1103,7 +1108,7 @@ index c4acd40..47f95ad 100644
  		/* SDL 3 gives the place in fractions of a pixel; whole pixels, as SDL 2 did */
  		const int x = static_cast<int>(event.motion.x), y = static_cast<int>(event.motion.y);
  		int w = 0, h = 0;
-@@ -551,6 +580,9 @@ Controls::event(const SDL_Event &event)
+@@ -551,6 +585,9 @@ Controls::event(const SDL_Event &event)
  	}
  	case SDL_EVENT_MOUSE_BUTTON_DOWN:
  	case SDL_EVENT_MOUSE_BUTTON_UP: {
@@ -1113,7 +1118,7 @@ index c4acd40..47f95ad 100644
  		const int index = mouse_button_of(event.button.button);
  
  		if (index >= 0)
-@@ -862,6 +894,16 @@ Controls::pad_type(unsigned player) const
+@@ -862,6 +899,16 @@ Controls::pad_type(unsigned player) const
  void
  Controls::update()
  {
@@ -1158,10 +1163,10 @@ index 3cad3b1..b54f8d8 100644
  
 diff --git a/src/odin/host/input/touch_pad.cpp b/src/odin/host/input/touch_pad.cpp
 new file mode 100644
-index 0000000..887a779
+index 0000000..982330c
 --- /dev/null
 +++ b/src/odin/host/input/touch_pad.cpp
-@@ -0,0 +1,889 @@
+@@ -0,0 +1,901 @@
 +/*
 + *  ██████╗ ██████╗ ██╗███╗   ██╗
 + * ██╔═══██╗██╔══██╗██║████╗  ██║
@@ -1338,6 +1343,10 @@ index 0000000..887a779
 +std::atomic<bool> g_twin{ false };
 +std::atomic<bool> g_aim{ false };
 +std::atomic<bool> g_second{ false };
++/* Each stick that works only switches (up, down, left, right): it reaches
++ * them from a short slide of the thumb (QUICK_GAIN), not half its ring */
++std::atomic<bool> g_quick[2] = { false, false };
++constexpr float QUICK_GAIN = 3.0f;
 +SDL_Haptic *g_haptic = nullptr;
 +bool g_haptic_looked = false;
 +std::atomic<Uint64> g_drawn_ns{ 0 };
@@ -1654,7 +1663,8 @@ index 0000000..887a779
 +				continue;
 +			if (f.part == STICK || f.part == STICK2) {
 +				const Shape &s = g_state.shapes[static_cast<size_t>(f.part)];
-+				float dx = (f.x - f.ox) / s.w, dy = (f.y - f.oy) / s.w;
++				const float gain = g_quick[f.part == STICK2].load() ? QUICK_GAIN : 1.0f;
++				float dx = (f.x - f.ox) / s.w * gain, dy = (f.y - f.oy) / s.w * gain;
 +				const float length = std::hypot(dx, dy);
 +
 +				if (length > 1.0f) {
@@ -1824,6 +1834,13 @@ index 0000000..887a779
 +touch_pad_second_stick(bool on)
 +{
 +	g_second = on;
++}
++
++void
++touch_pad_quick_sticks(bool first, bool second)
++{
++	g_quick[0] = first;
++	g_quick[1] = second;
 +}
 +
 +void
@@ -2053,10 +2070,10 @@ index 0000000..887a779
 +} /* namespace odin */
 diff --git a/src/odin/host/input/touch_pad.hpp b/src/odin/host/input/touch_pad.hpp
 new file mode 100644
-index 0000000..7a93e6c
+index 0000000..2197c94
 --- /dev/null
 +++ b/src/odin/host/input/touch_pad.hpp
-@@ -0,0 +1,72 @@
+@@ -0,0 +1,77 @@
 +/*
 + *  ██████╗ ██████╗ ██╗███╗   ██╗
 + * ██╔═══██╗██╔══██╗██║████╗  ██║
@@ -2123,6 +2140,11 @@ index 0000000..7a93e6c
 + * second floating stick, over the right half of the window, beside the face
 + * buttons */
 +void touch_pad_second_stick(bool on);
++/* Sticks that only work switches (a game whose directions are up, down,
++ * left, right, not an analog control): the first, the second. Such a stick
++ * gives its whole way from a third of its ring, the switches pressed from a
++ * short slide of the thumb instead of half the ring. */
++void touch_pad_quick_sticks(bool first, bool second);
 +/* The frames per second, shown in a corner of the pad (0: none yet) */
 +void touch_pad_speed(float fps);
 +
