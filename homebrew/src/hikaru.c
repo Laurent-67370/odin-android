@@ -112,6 +112,7 @@ void input_init(void)
  * when it is idle; command 1 in C000 (C001 set) polls the JVS board, whose
  * switches come in E003 (the cabinet) and E004-E005 (player 1). */
 static uint16_t switches;
+static unsigned raster_line(void);
 static uint8_t cabinet;
 
 int input_ready(void)
@@ -119,13 +120,50 @@ int input_ready(void)
 	return ZMEM(0xC004) == 3;
 }
 
+/* The line the display draws (0 to 527) */
+static unsigned raster_line(void)
+{
+	return (REG32(RASTER) >> 11) & 0x7FF;
+}
+
+/* The longest wait for an answer, in lines of 32 us: some 10 ms. The JVS
+ * board answers in some 130 lines (4 ms), as Odin emulates it. */
+#define POLL_LINES 300u
+
+/* Lines gone by while waiting for C001 to be 0 */
+static unsigned wait_idle(unsigned waited)
+{
+	unsigned last = raster_line();
+
+	while (ZMEM(0xC001) != 0 && waited < POLL_LINES) {
+		/* A pause between two looks: each read of the MIE or of the
+		 * display chip is a slow path of the emulator */
+		unsigned n = 256;
+		__asm__ volatile("1: dt %0\n\tbf 1b" : "+r"(n) : : "t");
+		const unsigned line = raster_line();
+		if (line != last) {
+			waited++;
+			last = line;
+		}
+	}
+	return waited;
+}
+
 uint16_t input_read(void)
 {
-	if (ZMEM(0xC004) == 3 && ZMEM(0xC001) == 0) {
+	if (ZMEM(0xC004) != 3)
+		return switches;
+	/* Asked now, its answer waited for: the switches as they are, not as
+	 * they were a frame ago */
+	unsigned waited = wait_idle(0);
+	if (ZMEM(0xC001) != 0)
+		return switches;	/* still busy: the last answer */
+	ZMEM(0xC000) = 1;
+	ZMEM(0xC001) = 1;
+	waited = wait_idle(waited);
+	if (ZMEM(0xC001) == 0) {
 		cabinet = ZMEM(0xE003);
 		switches = (uint16_t)(ZMEM(0xE004) << 8 | ZMEM(0xE005));
-		ZMEM(0xC000) = 1;
-		ZMEM(0xC001) = 1;
 	}
 	return switches;
 }

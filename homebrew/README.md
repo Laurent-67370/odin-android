@@ -105,7 +105,9 @@ dialogue par une boîte aux lettres en mémoire du Z80 :
   initialise la carte JVS) ;
 - `C001 = 0` : il est libre ; on écrit alors la commande 1 dans `C000` et 1
   dans `C001` ;
-- quand `C001` revient à 0, les boutons sont en `E003` (la borne : TEST =
+- quand `C001` revient à 0 (en 4 ms environ : le jeu l'attend, pour lire
+  les commandes de l'instant et non celles de l'image d'avant), les boutons
+  sont en `E003` (la borne : TEST =
   bit 7) et `E004`–`E005` (joueur 1, ordre JVS : START, SERVICE, haut, bas,
   gauche, droite, bouton 1, bouton 2, puis boutons 3 à 8).
 
