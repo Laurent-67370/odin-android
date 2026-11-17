@@ -1163,10 +1163,10 @@ index 3cad3b1..b54f8d8 100644
  
 diff --git a/src/odin/host/input/touch_pad.cpp b/src/odin/host/input/touch_pad.cpp
 new file mode 100644
-index 0000000..982330c
+index 0000000..853e7cf
 --- /dev/null
 +++ b/src/odin/host/input/touch_pad.cpp
-@@ -0,0 +1,901 @@
+@@ -0,0 +1,922 @@
 +/*
 + *  ██████╗ ██████╗ ██╗███╗   ██╗
 + * ██╔═══██╗██╔══██╗██║████╗  ██║
@@ -1335,7 +1335,14 @@ index 0000000..982330c
 +	unsigned aim_taps = 0;
 +	/* A menu of Dear ImGui open over the game: the touches are its */
 +	bool popup = false;
++	/* Until when each button or trigger stays pressed after a finger came
++	 * down on it, however soon the finger went: a tap shorter than a frame
++	 * still reaches the game */
++	std::array<Uint64, PARTS> pressed_until{};
 +};
++
++/* How long a tap holds its button at least */
++constexpr Uint64 TAP_NS = 60'000'000;
 +
 +State g_state;
 +/* The touches that landed on a part, for a short buzz (Odin's thread) */
@@ -1587,6 +1594,8 @@ index 0000000..982330c
 +					}
 +					if (shortcut >= 0)
 +						press_shortcut(shortcut, true);
++					else if (part > STICK && part < PARTS && part != STICK2)
++						g_state.pressed_until[static_cast<size_t>(part)] = SDL_GetTicksNS() + TAP_NS;
 +					g_buzzes++;
 +					break;
 +				}
@@ -1680,6 +1689,18 @@ index 0000000..982330c
 +			} else if (f.part < PARTS && BUTTONS[f.part] >= 0) {
 +				buttons[static_cast<size_t>(BUTTONS[f.part])] = true;
 +			}
++		}
++		/* The taps already let go, held a little longer */
++		const Uint64 now = SDL_GetTicksNS();
++		for (int p = BUTTON_A; p < PARTS && on; p++) {
++			if (g_state.pressed_until[static_cast<size_t>(p)] <= now)
++				continue;
++			if (p == TRIGGER_L)
++				trigger_l = true;
++			else if (p == TRIGGER_R)
++				trigger_r = true;
++			else if (BUTTONS[p] >= 0)
++				buttons[static_cast<size_t>(BUTTONS[p])] = true;
 +		}
 +	}
 +	SDL_Joystick *const joystick = SDL_GetJoystickFromID(id);
