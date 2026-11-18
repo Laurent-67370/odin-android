@@ -22,7 +22,7 @@ NAME, TITLE = 'odinhb', 'Nova Siege'
 LOAD = 0x8C100000          # where the program runs (link.ld)
 PROG_AT = 0x1000           # where it is in the EPROMs
 CHIP = 2 << 20             # two 2 MB EPROMs, 16 bits each in turn
-SOURCES = ['crt0.S', 'hikaru.c', 'gfx.c', 'sound.c', 'main.c']
+SOURCES = ['crt0.S', 'hikaru.c', 'gfx.c', 'sound.c', 'music.c', 'main.c']
 
 
 def font_header(gen):
@@ -100,6 +100,47 @@ def sounds_source(gen):
     open(os.path.join(gen, 'sounds.c'), 'w').write('\n'.join(c) + '\n')
 
 
+def music_source(gen):
+    """tools/music.py as music_data.h and music_data.c"""
+    import importlib.util
+    spec = importlib.util.spec_from_file_location('music', os.path.join(HERE, 'tools', 'music.py'))
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    tracks = module.generate()
+    h = ['/* Made by build.py from tools/music.py */', '#ifndef MUSIC_DATA_H', '#define MUSIC_DATA_H',
+         '#include <stdint.h>',
+         '/* A note: its pitch in 1024ths of its sound (0: a rest), its length in ticks, its sound */',
+         'typedef struct { uint16_t pitch; uint8_t ticks; uint8_t sound; } mnote_t;',
+         '/* A channel: its notes, its level (0-15) and pan, its envelope (AICA registers 10 and 14) */',
+         'typedef struct { const mnote_t *notes; uint16_t count; uint8_t level; int8_t pan;'
+         ' uint16_t rates, decay; } mchannel_t;',
+         'typedef struct { uint8_t tick_frames; uint8_t count; const mchannel_t *channels; } mtrack_t;',
+         'enum {']
+    h += ['\tMUSIC_%s,' % name.upper() for name, _ in tracks]
+    h += ['\tMUSIC_COUNT', '};', 'extern const mtrack_t music_tracks[MUSIC_COUNT];', '#endif']
+    c = ['/* Made by build.py from tools/music.py */', '#include "music_data.h"', '#include "sounds.h"']
+    for name, track in tracks:
+        for n, ch in enumerate(track['channels']):
+            c.append('static const mnote_t %s_%d[] = {' % (name, n))
+            for pitch, ticks, sound in ch['notes']:
+                c.append('\t{ %d, %d, %s },' % (pitch, ticks, 'SND_' + sound.upper() if sound else '0'))
+            c.append('};')
+        c.append('static const mchannel_t %s_channels[] = {' % name)
+        for n, ch in enumerate(track['channels']):
+            ar, d1r, dl, d2r, rr = ch['envelope']
+            rates = d2r << 11 | d1r << 6 | ar
+            decay = 0xF << 10 | dl << 5 | rr          # KRS off
+            c.append('\t{ %s_%d, %d, %d, %d, 0x%04X, 0x%04X },' % (name, n, len(ch['notes']), ch['level'], ch['pan'],
+                                                                  rates, decay))
+        c.append('};')
+    c.append('const mtrack_t music_tracks[MUSIC_COUNT] = {')
+    for name, track in tracks:
+        c.append('\t{ %d, %d, %s_channels },' % (track['tick_frames'], len(track['channels']), name))
+    c.append('};')
+    open(os.path.join(gen, 'music_data.h'), 'w').write('\n'.join(h) + '\n')
+    open(os.path.join(gen, 'music_data.c'), 'w').write('\n'.join(c) + '\n')
+
+
 def compile_program(flags=()):
     os.makedirs(OUT, exist_ok=True)
     gen = os.path.join(OUT, 'gen')
@@ -107,6 +148,7 @@ def compile_program(flags=()):
     font_header(gen)
     sprites_source(gen)
     sounds_source(gen)
+    music_source(gen)
     elf, binary = os.path.join(OUT, NAME + '.elf'), os.path.join(OUT, NAME + '.bin')
     subprocess.check_call(['sh4-linux-gnu-gcc', '-m4', '-ml', '-O2', '-static', '-fno-pic', '-nostdlib',
                            '-ffreestanding', '-fno-builtin', '-Wall', '-Wextra',
@@ -114,7 +156,8 @@ def compile_program(flags=()):
                            '-I', os.path.join(HERE, 'src'), '-I', gen, *flags,
                            '-T', os.path.join(HERE, 'src', 'link.ld')] +
                           [os.path.join(HERE, 'src', s) for s in SOURCES] +
-                          [os.path.join(gen, 'sprites.c'), os.path.join(gen, 'sounds.c'), '-o', elf, '-lgcc'])
+                          [os.path.join(gen, 'sprites.c'), os.path.join(gen, 'sounds.c'),
+                           os.path.join(gen, 'music_data.c'), '-o', elf, '-lgcc'])
     subprocess.check_call(['sh4-linux-gnu-objcopy', '-O', 'binary', elf, binary])
     return open(binary, 'rb').read()
 

@@ -30,6 +30,12 @@ accélèrent avec elle), la sirène du pillard, le tintement des coups sur les
 blindés et le vaisseau-mère, la plongée, les jingles de départ, de vague
 nettoyée et de fin de partie. Tout est synthétisé par `tools/sounds.py`.
 
+**La musique** : trois morceaux composés pour le jeu, qui bouclent : un
+calme en la mineur pour l'écran titre, un entraînant en mi mineur pour les
+vagues, un rapide en ré mineur pour le vaisseau-mère. Basse, mélodie,
+arpèges ou nappe, et batterie. **B (bouton 2) sur l'écran titre la coupe ou
+la remet** ; le choix est gardé.
+
 **Le record** est gardé dans la RAM sauvegardée de la borne : il reste d'une
 partie et d'un lancement à l'autre.
 
@@ -38,6 +44,7 @@ partie et d'un lancement à l'autre.
 | Stick (ou flèches) gauche / droite | déplacer le chasseur |
 | A / bouton 1 (ou B / bouton 2) | tirer |
 | START | commencer une partie |
+| B / bouton 2 (écran titre) | musique on / off |
 
 | Ennemi | Points |
 |---|---|
@@ -129,6 +136,15 @@ les voix : ce sont celles de l'AICA de la Dreamcast (`src/sound.c`).
 qui a fini garde son `KYONB` effacé un peu avant sa fin, pour ne pas
 repartir au prochain déclenchement.
 
+### La musique : un séquenceur
+
+`tools/music.py` écrit chaque morceau en lignes de notes (`NOTE:TEMPS`, un
+temps étant une double croche ; `-` un silence ; `K`, `H`, `S` la grosse
+caisse, le charleston, la caisse claire). Les instruments sont des cycles
+d'onde bouclés par l'AICA (carré, dent de scie, triangle), avec l'enveloppe
+de l'AICA ; `src/music.c` lit les notes à chaque image, sur les voix 16 et
+suivantes.
+
 ### Le record : la RAM sauvegardée
 
 64 Ko à `00C00000`, sur pile sur la borne, qu'Odin garde dans le fichier
@@ -160,7 +176,9 @@ dialogue par une boîte aux lettres en mémoire du Z80 :
 | `src/hikaru.h`, `src/hikaru.c` | la borne : couche 2D et double tampon, image suivante, commandes |
 | `src/gfx.h`, `src/gfx.c` | le dessin : effacer, rectangles, sprites, texte, nombres |
 | `src/sound.h`, `src/sound.c` | le son : les voix de l'AICA |
-| `tools/sounds.py` | les sons, synthétisés |
+| `tools/sounds.py` | les sons et les instruments, synthétisés |
+| `src/music.h`, `src/music.c` | le séquenceur de la musique |
+| `tools/music.py` | la musique, écrite en notes (`E4:2`, `-:4`, `K:2`…) |
 | `src/main.c` | le jeu, NOVA SIEGE |
 | `assets/*.png` | les sprites (aliens en deux poses, chasseur, pillard, explosions) |
 | `tools/sprites.py` | les sprites dessinés en texte : il écrit `assets/*.png` |
@@ -174,7 +192,7 @@ dialogue par une boîte aux lettres en mémoire du Z80 :
   BIOS 0.92 et 0.84 ne sont pas encore pris en charge.
 - Les commandes ne répondent qu'une dizaine de secondes après le lancement
   (l'initialisation de la carte JVS).
-- Pas encore de 3D ni de musique de fond.
+- Pas encore de 3D.
 
 ## Tester
 

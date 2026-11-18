@@ -20,6 +20,11 @@ void sound_init(void);
  * loops plays until sound_stop */
 void sound_play(unsigned voice, unsigned sound, unsigned pitch, unsigned level, int pan);
 void sound_stop(unsigned voice);
+/* The same with an envelope: `rates` and `decay` as the AICA's registers 10
+ * (D2R, D1R, AR) and 14 (KRS, DL, RR) of a voice; sound_play uses 0x1F and
+ * 0x1F, at once, no decay, a quick release */
+void sound_play_env(unsigned voice, unsigned sound, unsigned pitch, unsigned level, int pan, unsigned rates,
+                    unsigned decay);
 /* Once a frame: the voices whose sound ended let go */
 void sound_frame(void);
 

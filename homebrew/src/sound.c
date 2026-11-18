@@ -79,6 +79,12 @@ void sound_stop(unsigned voice)
 
 void sound_play(unsigned voice, unsigned sound, unsigned pitch, unsigned level, int pan)
 {
+	sound_play_env(voice, sound, pitch, level, pan, 0x001F, 0x001F);
+}
+
+void sound_play_env(unsigned voice, unsigned sound, unsigned pitch, unsigned level, int pan, unsigned rates,
+                    unsigned decay)
+{
 	if (sound >= SOUND_COUNT || voice >= 64)
 		return;
 	const sound_t *const snd = &sounds[sound];
@@ -99,8 +105,8 @@ void sound_play(unsigned voice, unsigned sound, unsigned pitch, unsigned level, 
 	slot(voice, SA, at & 0xFFFF);
 	slot(voice, LSA, loop ? (unsigned)snd->loop_start : 0);
 	slot(voice, LEA, snd->length - 1);
-	slot(voice, RATES, 0x001F);		/* AR at once, no decay */
-	slot(voice, DECAY, 0x001F);		/* a quick release */
+	slot(voice, RATES, rates);		/* D2R, D1R, AR */
+	slot(voice, DECAY, decay);		/* KRS, DL, RR */
 	slot(voice, PITCH, ((unsigned)(oct & 0xF) << 11) | (fns & 0x3FF));
 	slot(voice, LFO, 0);
 	slot(voice, EFFECT, 0);
