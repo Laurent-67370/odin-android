@@ -184,7 +184,7 @@ def rom_of(program, title):
     return chips
 
 
-def entry_of(chips, names, name, title):
+def entry_of(chips, names, name, title, aim=False):
     def control(name, cid, switch, role, pad=None):
         c = {'name': name, 'id': cid, 'switch': switch, 'role': role}
         if pad:
@@ -205,7 +205,11 @@ def entry_of(chips, names, name, title):
             control('BUTTON 1', 'button1', '1P PUSH1', 'button1'),
             control('BUTTON 2', 'button2', '1P PUSH2', 'button2'),
             control('BUTTON 3', 'button3', '1P PUSH3', 'button3'),
-        ],
+        ] + ([
+            # A sight, as Brave Firefighters' nozzle: on the phone, the finger
+            {'name': 'X AXIS', 'id': 'sight_x', 'analog': 0, 'low': 'left', 'role': 'gun_x'},
+            {'name': 'Y AXIS', 'id': 'sight_y', 'analog': 1, 'low': 'up', 'role': 'gun_y'},
+        ] if aim else []),
         'sections': [
             alt('mie', [dict(sets('315-6146.bin', 2048, '9b197e35'), set='mie')]),
             alt('io_rom', [dict(sets('315-6215.bin', 16384, '98202738'), set='jvs13551')], True),
@@ -227,7 +231,7 @@ def build(game, flags, games_json):
     with zipfile.ZipFile(os.path.join(OUT, name + '.zip'), 'w', zipfile.ZIP_DEFLATED) as z:
         for n, c in zip(names, chips):
             z.writestr(n, bytes(c))
-    entry = entry_of(chips, names, name, title)
+    entry = entry_of(chips, names, name, title, about.get('aim', False))
     json.dump(entry, open(os.path.join(OUT, name + '.json'), 'w'), indent=1)
     if games_json:
         games = json.load(open(games_json))

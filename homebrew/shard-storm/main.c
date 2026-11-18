@@ -552,15 +552,59 @@ static void take_capsule(int kind)
 
 /* ---- a frame of play ------------------------------------------------------------ */
 
+/* The sight's X axis (the finger on the phone, the mouse): the high byte of
+ * analog channel 0, which the JVS program of the MIE keeps at Z80 E203 with
+ * every poll (channel n at E203 + 2n), 0 on the left of the picture, FF on
+ * the right. The stick and the keys work it too, back to the middle when
+ * let go: it takes the paddle only when it moves with no stick held, and
+ * not until the keys have let it settle. */
+#define SIGHT_X (*(volatile uint8_t *)(0xA0820000u + 2u * 0xE203u))
+#define SIGHT_STEP 2		/* a move it takes, in 256ths of the picture */
+#define SIGHT_SETTLE 24		/* frames after the stick before it does */
+#define SIGHT_FAST 48		/* the most the paddle goes in a frame after it */
+
+static void follow_sight(int stick)
+{
+	static int last = -1, quiet, aimed;
+	const int at = SIGHT_X;
+
+	if (stick || last < 0) {
+		quiet = 0;
+		aimed = 0;
+		last = at;
+		return;
+	}
+	if (quiet < SIGHT_SETTLE) {
+		quiet++;
+		last = at;
+		return;
+	}
+	if (at - last >= SIGHT_STEP || last - at >= SIGHT_STEP) {
+		aimed = 1;
+		last = at;
+	}
+	if (!aimed)
+		return;
+	/* the middle of the paddle under the finger */
+	const int want = at * SCREEN_W / 255 - g.paddle_w / 2;
+	int step = want - g.paddle_x;
+	if (step > SIGHT_FAST)
+		step = SIGHT_FAST;
+	if (step < -SIGHT_FAST)
+		step = -SIGHT_FAST;
+	g.paddle_x += step;
+}
+
 static void play(uint16_t in, uint16_t pressed)
 {
-	/* the paddle: faster as the stick is held */
+	/* the paddle: faster as the stick is held; or under the sight */
 	const int dir = (in & IN_LEFT) ? -1 : (in & IN_RIGHT) ? 1 : 0;
 	if (dir == 0)
 		g.paddle_v = 0;
 	else if (g.paddle_v * dir < 9)
 		g.paddle_v = dir * (g.paddle_v * dir < 5 ? 5 : g.paddle_v * dir + 1);
 	g.paddle_x += g.paddle_v;
+	follow_sight(dir != 0);
 	if (g.paddle_x < WALL_L)
 		g.paddle_x = WALL_L;
 	if (g.paddle_x > WALL_R - g.paddle_w)
@@ -799,7 +843,7 @@ static void draw_title(void)
 	else if ((g.frame >> 5) & 1)
 		draw_centred(345, "PRESS START", WHITE, 3);
 	draw_centred(408, music_enabled() ? "B / B2: MUSIC ON" : "B / B2: MUSIC OFF", GREY, 2);
-	draw_centred(436, "STICK: MOVE   A / B1: LAUNCH, LASER", GREY, 2);
+	draw_centred(436, "FINGER OR STICK: MOVE   TAP / A: LAUNCH, LASER", GREY, 2);
 }
 
 /* ---- the loop ---------------------------------------------------------------------- */
