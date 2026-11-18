@@ -1,10 +1,18 @@
 # Homebrew pour la SEGA Hikaru (sous Odin)
 
-Un jeu fait maison qui tourne sur la borne **SEGA Hikaru** telle qu'Odin
-l'émule : un vrai programme pour son processeur SH-4, lancé par le BIOS
-SEGA comme les jeux d'origine.
+Des jeux faits maison qui tournent sur la borne **SEGA Hikaru** telle qu'Odin
+l'émule : de vrais programmes pour son processeur SH-4, lancés par le BIOS
+SEGA comme les jeux d'origine. Deux jeux originaux, qui partagent une même
+bibliothèque (`src/`) :
 
-Le jeu : **NOVA SIEGE**, un jeu de tir à écran fixe, original. Une
+| Jeu | Genre | Fichier |
+|---|---|---|
+| [**NOVA SIEGE**](#nova-siege) | tir à écran fixe | `odinhb.zip` |
+| [**SHARD STORM**](#shard-storm) | casse-briques | `odinshrd.zip` |
+
+## NOVA SIEGE
+
+Un jeu de tir à écran fixe, original. Une
 formation d'aliens avance de côté et descend à chaque bord, de plus en plus
 vite à mesure qu'elle se vide ; le chasseur en bas tire (deux tirs à la fois ;
 un appui fait pendant que les deux volent part dès qu'un tir se libère) depuis
@@ -28,7 +36,7 @@ Les vagues changent :
 **Le son** : tirs, explosions, les quatre notes du pas de la formation (qui
 accélèrent avec elle), la sirène du pillard, le tintement des coups sur les
 blindés et le vaisseau-mère, la plongée, les jingles de départ, de vague
-nettoyée et de fin de partie. Tout est synthétisé par `tools/sounds.py`.
+nettoyée et de fin de partie. Tout est synthétisé par `nova-siege/sounds.py`.
 
 **La musique** : trois morceaux composés pour le jeu, qui bouclent : un
 calme en la mineur pour l'écran titre, un entraînant en mi mineur pour les
@@ -63,30 +71,88 @@ l'écran titre affiche « WAITING FOR THE I/O BOARD... ».
 
 ![La vague des pinces avec ses blindés orange, et le vaisseau-mère de la vague 5](docs/waves.png)
 
+## SHARD STORM
+
+Un casse-briques, original : une raquette en bas garde la balle en jeu, et la
+balle brise les briques de cristal du niveau. **Douze niveaux** dessinés
+(les bandes, la pyramide, le damier, le cadre, le losange, les colonnes, le
+champ de mines, le cœur, le zigzag, la forteresse, la spirale, la tempête),
+puis ils recommencent, plus vite. La balle accélère à mesure que les briques
+tombent ; son angle dépend de l'endroit où elle touche la raquette.
+
+| Brique | Effet |
+|---|---|
+| Couleur | un coup ; 50 à 120 points selon la couleur |
+| Argent (chiffre) | plusieurs coups, d'autant plus que le niveau avance |
+| Or | indestructible |
+| Bombe | explose et brise les briques autour (en chaîne) |
+| Scintillante | lâche toujours une capsule |
+
+Les briques de couleur lâchent parfois une **capsule** ; la raquette
+l'attrape (500 points) :
+
+| Capsule | Effet |
+|---|---|
+| **W** (bleue) | raquette large |
+| **M** (cyan) | chaque balle devient trois |
+| **L** (rouge) | laser : A tire deux rayons |
+| **S** (orange) | balle ralentie |
+| **C** (verte) | raquette collante : la balle s'y pose, A la relance |
+| **+** (violette) | une raquette de plus |
+
+Trois raquettes, une de plus à 20 000 points puis tous les 30 000 ; 1000
+points par niveau nettoyé. **Son** : rebonds, une note de cristal par
+brique (plus aiguë en haut), tintement de l'argent et de l'or, explosions,
+laser, jingles. **Musique** : trois morceaux composés pour le jeu (un aérien en
+do majeur pour l'écran titre, un groove en sol mineur et un morceau vif en fa
+majeur pour les niveaux, en alternance). Record gardé, musique coupée ou
+remise par B sur l'écran titre, comme pour NOVA SIEGE.
+
+| Commande | Action |
+|---|---|
+| Stick (ou flèches) gauche / droite | déplacer la raquette (elle accélère si on tient) |
+| A / bouton 1 | lancer la balle ; tirer au laser |
+| START | commencer une partie |
+| B / bouton 2 (écran titre) | musique on / off |
+
+![SHARD STORM dans Odin : l'écran titre et le premier niveau](docs/shard.png)
+
+![Le losange du niveau 5 (bombes, brique scintillante) et la forteresse du niveau 10 (or, argent)](docs/shard-levels.png)
+
 ## Jouer sur le téléphone
 
-L'APK connaît le jeu, et `odinhb.zip` est publié avec lui à chaque version :
+L'APK connaît les deux jeux, et leurs fichiers sont publiés avec lui à chaque
+version :
 
 1. Télécharger
-   [odinhb.zip](https://github.com/Laurent-67370/odin-android/releases/download/odin-apk/odinhb.zip).
-2. Le mettre dans `Odin/roms`, à côté de `hikaru.zip` et `mie.zip`.
-3. Lancer **Nova Siege** dans la liste des jeux.
+   [odinhb.zip](https://github.com/Laurent-67370/odin-android/releases/download/odin-apk/odinhb.zip)
+   (NOVA SIEGE) et
+   [odinshrd.zip](https://github.com/Laurent-67370/odin-android/releases/download/odin-apk/odinshrd.zip)
+   (SHARD STORM).
+2. Les mettre dans `Odin/roms`, à côté de `hikaru.zip` et `mie.zip`.
+3. Lancer **Nova Siege** ou **Shard Storm** dans la liste des jeux.
 
-Manette tactile : le stick déplace le chasseur, A tire, START lance la
-partie. Après une mise à jour de l'APK qui change le homebrew, retélécharger
-`odinhb.zip` : Odin vérifie que les EPROM sont celles que sa liste attend.
+Après une mise à jour de l'APK qui change un homebrew, retélécharger son
+fichier : Odin vérifie que les EPROM sont celles que sa liste attend.
 
 ## Construire
 
 ```sh
 sudo apt install gcc-sh4-linux-gnu python3-pil   # le compilateur C pour SH-4, Pillow pour les PNG
-python3 build.py                        # → build/odinhb.zip et build/odinhb.json
-python3 build.py --games chemin/vers/odin-games.json   # ajoute aussi le jeu à la liste d'Odin
+python3 build.py                        # tous les jeux → build/<nom>.zip et build/<nom>.json
+python3 build.py --game shard-storm     # un seul
+python3 build.py --games chemin/vers/odin-games.json   # ajoute aussi les jeux à la liste d'Odin
 ```
 
-`build/odinhb.zip` contient les deux EPROM du jeu (`odinhb.ic29` et
-`odinhb.ic30`). Il se met dans le dossier des ROM d'Odin, à côté de
-`hikaru.zip` et `mie.zip`. Le jeu s'appelle **Nova Siege** dans la liste.
+Chaque jeu est un dossier avec un `game.json` (son nom de jeu à la MAME et son
+titre) : `nova-siege/` donne `build/odinhb.zip`, `shard-storm/` donne
+`build/odinshrd.zip`. Un zip contient les deux EPROM du jeu (`<nom>.ic29` et
+`<nom>.ic30`) et se met dans le dossier des ROM d'Odin, à côté de
+`hikaru.zip` et `mie.zip`.
+
+Pour un nouveau jeu : un dossier avec `game.json`, `main.c`, `assets/` (ses
+sprites en PNG), `sounds.py` et `music.py` (qui s'appuient sur
+`tools/synth.py`).
 
 La ROM ne contient **aucun code de SEGA**. Il faut le BIOS de la borne
 (`hikaru.zip`, version 0.96) et `mie.zip`, comme pour les autres jeux Hikaru.
@@ -123,7 +189,7 @@ Deux images de la couche 1 sont dans la mémoire d'image (lignes 1024 et
 
 - **Texte** : une police 5×7 dessinée pour ce projet (`tools/font5x7.txt`,
   modifiable à la main), agrandissable (`draw_text`, `draw_number`).
-- **Sprites** : les images PNG de `assets/` deviennent des sprites
+- **Sprites** : les images PNG du dossier `assets/` d'un jeu deviennent des sprites
   (`spr_<nom>`) à la construction ; les pixels transparents ne sont pas
   dessinés (`draw_sprite`, `draw_sprite_scaled`).
 
@@ -140,7 +206,7 @@ repartir au prochain déclenchement.
 
 ### La musique : un séquenceur
 
-`tools/music.py` écrit chaque morceau en lignes de notes (`NOTE:TEMPS`, un
+Le `music.py` d'un jeu écrit chaque morceau en lignes de notes (`NOTE:TEMPS`, un
 temps étant une double croche ; `-` un silence ; `K`, `H`, `S` la grosse
 caisse, le charleston, la caisse claire). Les instruments sont des cycles
 d'onde bouclés par l'AICA (carré, dent de scie, triangle), avec l'enveloppe
@@ -175,18 +241,18 @@ dialogue par une boîte aux lettres en mémoire du Z80 :
 
 | Fichier | Rôle |
 |---|---|
-| `src/hikaru.h`, `src/hikaru.c` | la borne : couche 2D et double tampon, image suivante, commandes |
+| `src/hikaru.h`, `src/hikaru.c` | la borne : couche 2D et double tampon, image suivante, commandes, RAM sauvegardée |
 | `src/gfx.h`, `src/gfx.c` | le dessin : effacer, rectangles, sprites, texte, nombres |
 | `src/sound.h`, `src/sound.c` | le son : les voix de l'AICA |
-| `tools/sounds.py` | les sons et les instruments, synthétisés |
 | `src/music.h`, `src/music.c` | le séquenceur de la musique |
-| `tools/music.py` | la musique, écrite en notes (`E4:2`, `-:4`, `K:2`…) |
-| `src/main.c` | le jeu, NOVA SIEGE |
-| `assets/*.png` | les sprites (aliens en deux poses, chasseur, pillard, explosions) |
-| `tools/sprites.py` | les sprites dessinés en texte : il écrit `assets/*.png` |
-| `tools/font5x7.txt` | la police |
 | `src/crt0.S`, `src/link.ld` | le démarrage du programme et son placement en mémoire |
-| `build.py` | génère la police et les sprites, compile, fabrique les EPROM et l'entrée de la liste des jeux |
+| `tools/font5x7.txt` | la police |
+| `tools/synth.py` | la synthèse des sons et l'écriture des notes, pour les jeux |
+| `<jeu>/game.json` | le nom du jeu dans la liste d'Odin, son titre |
+| `<jeu>/main.c` | le jeu |
+| `<jeu>/assets/*.png`, `<jeu>/sprites.py` | ses sprites, dessinés en texte par `sprites.py` |
+| `<jeu>/sounds.py`, `<jeu>/music.py` | ses sons et sa musique (`E4:2`, `-:4`, `K:2`…) |
+| `build.py` | génère la police, les sprites, les sons et la musique, compile, fabrique les EPROM et les entrées de la liste des jeux |
 
 ## Limites connues
 
@@ -198,6 +264,7 @@ dialogue par une boîte aux lettres en mémoire du Z80 :
 
 ## Tester
 
-`build.py --start-wave N` fabrique une ROM qui commence à la vague N (5 : le
-vaisseau-mère) ; `--define RECORD_TEST=1234` écrit ce record au lancement.
+`build.py --start-wave N` fabrique une ROM qui commence à la vague (NOVA SIEGE)
+ou au niveau (SHARD STORM) N ; `--define RECORD_TEST=1234` écrit ce record au
+lancement de NOVA SIEGE.
 Dans Odin sur PC, `ODIN_WAV=son.wav` enregistre le son de la borne.

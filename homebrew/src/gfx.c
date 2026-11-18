@@ -31,9 +31,22 @@ void fill_rect(int x, int y, int w, int h, uint16_t colour)
 	if (y < 0) { h += y; y = 0; }
 	if (x + w > SCREEN_W) w = SCREEN_W - x;
 	if (y + h > SCREEN_H) h = SCREEN_H - y;
+	if (w <= 0 || h <= 0)
+		return;
+	/* Even spans by 32-bit words: two pixels of one colour, whatever their
+	 * order in the word */
+	const uint32_t pair = (uint32_t)colour << 16 | colour;
 	for (int j = 0; j < h; j++) {
 		volatile uint16_t *line = screen + (y + j) * SCREEN_PITCH;
-		for (int i = 0; i < w; i++)
+		int i = 0;
+		if ((x & 1) && w > 0) {
+			line[x ^ 1] = colour;
+			i = 1;
+		}
+		volatile uint32_t *words = (volatile uint32_t *)(line + x + i);
+		for (; i + 1 < w; i += 2)
+			*words++ = pair;
+		if (i < w)
 			line[(x + i) ^ 1] = colour;
 	}
 }

@@ -1,8 +1,12 @@
 #!/usr/bin/env python3
-"""Builds the homebrew for the SEGA Hikaru: odinhb.zip (two EPROMs) and
-odinhb.json, its entry for Odin's list of games.
+"""Builds the homebrew games for the SEGA Hikaru: for each folder with a
+game.json (its MAME-style set name and its title), build/<name>.zip (two
+EPROMs) and build/<name>.json, its entry for Odin's list of games.
 
-    python3 build.py [--games path/to/odin-games.json]
+    python3 build.py [--game FOLDER] [--games path/to/odin-games.json]
+
+A game folder holds main.c, assets/*.png (its sprites), sounds.py and
+music.py; src/ is the library they share, tools/font5x7.txt their font.
 
 Needs sh4-linux-gnu-gcc (Debian/Ubuntu: gcc-sh4-linux-gnu).
 
@@ -18,11 +22,10 @@ import argparse, json, os, struct, subprocess, zipfile, zlib
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 OUT = os.path.join(HERE, 'build')
-NAME, TITLE = 'odinhb', 'Nova Siege'
 LOAD = 0x8C100000          # where the program runs (link.ld)
 PROG_AT = 0x1000           # where it is in the EPROMs
 CHIP = 2 << 20             # two 2 MB EPROMs, 16 bits each in turn
-SOURCES = ['crt0.S', 'hikaru.c', 'gfx.c', 'sound.c', 'music.c', 'main.c']
+LIBRARY = ['crt0.S', 'hikaru.c', 'gfx.c', 'sound.c', 'music.c']
 
 
 def font_header(gen):
@@ -48,14 +51,14 @@ def font_header(gen):
     open(os.path.join(gen, 'font5x7.h'), 'w').write('\n'.join(out) + '\n')
 
 
-def sprites_source(gen):
+def sprites_source(game, gen):
     """assets/*.png as sprites.h and sprites.c: ABGR1555, 0 where transparent"""
     from PIL import Image
-    names = sorted(f[:-4] for f in os.listdir(os.path.join(HERE, 'assets')) if f.endswith('.png'))
+    names = sorted(f[:-4] for f in os.listdir(os.path.join(game, 'assets')) if f.endswith('.png'))
     h = ['/* Made by build.py from assets/ */', '#include "gfx.h"']
     c = ['/* Made by build.py from assets/ */', '#include "sprites.h"']
     for n in names:
-        im = Image.open(os.path.join(HERE, 'assets', n + '.png')).convert('RGBA')
+        im = Image.open(os.path.join(game, 'assets', n + '.png')).convert('RGBA')
         px = []
         raw = im.tobytes()
         for i in range(0, len(raw), 4):
@@ -71,10 +74,10 @@ def sprites_source(gen):
     open(os.path.join(gen, 'sprites.c'), 'w').write('\n'.join(c) + '\n')
 
 
-def sounds_source(gen):
-    """tools/sounds.py as sounds.h and sounds.c: 16-bit samples at 22050 Hz"""
+def sounds_source(game, gen):
+    """sounds.py as sounds.h and sounds.c: 16-bit samples at 22050 Hz"""
     import importlib.util
-    spec = importlib.util.spec_from_file_location('sounds', os.path.join(HERE, 'tools', 'sounds.py'))
+    spec = importlib.util.spec_from_file_location('sounds', os.path.join(game, 'sounds.py'))
     module = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(module)
     table = module.generate()
@@ -100,10 +103,10 @@ def sounds_source(gen):
     open(os.path.join(gen, 'sounds.c'), 'w').write('\n'.join(c) + '\n')
 
 
-def music_source(gen):
-    """tools/music.py as music_data.h and music_data.c"""
+def music_source(game, gen):
+    """music.py as music_data.h and music_data.c"""
     import importlib.util
-    spec = importlib.util.spec_from_file_location('music', os.path.join(HERE, 'tools', 'music.py'))
+    spec = importlib.util.spec_from_file_location('music', os.path.join(game, 'music.py'))
     module = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(module)
     tracks = module.generate()
@@ -141,31 +144,30 @@ def music_source(gen):
     open(os.path.join(gen, 'music_data.c'), 'w').write('\n'.join(c) + '\n')
 
 
-def compile_program(flags=()):
-    os.makedirs(OUT, exist_ok=True)
-    gen = os.path.join(OUT, 'gen')
+def compile_program(game, name, flags=()):
+    gen = os.path.join(OUT, name, 'gen')
     os.makedirs(gen, exist_ok=True)
     font_header(gen)
-    sprites_source(gen)
-    sounds_source(gen)
-    music_source(gen)
-    elf, binary = os.path.join(OUT, NAME + '.elf'), os.path.join(OUT, NAME + '.bin')
+    sprites_source(game, gen)
+    sounds_source(game, gen)
+    music_source(game, gen)
+    elf, binary = os.path.join(OUT, name, name + '.elf'), os.path.join(OUT, name, name + '.bin')
     subprocess.check_call(['sh4-linux-gnu-gcc', '-m4', '-ml', '-O2', '-static', '-fno-pic', '-nostdlib',
                            '-ffreestanding', '-fno-builtin', '-Wall', '-Wextra',
                            '-Wl,--build-id=none', '-Wl,-z,noexecstack', '-Wl,--no-warn-rwx-segments',
                            '-I', os.path.join(HERE, 'src'), '-I', gen, *flags,
                            '-T', os.path.join(HERE, 'src', 'link.ld')] +
-                          [os.path.join(HERE, 'src', s) for s in SOURCES] +
+                          [os.path.join(HERE, 'src', s) for s in LIBRARY] + [os.path.join(game, 'main.c')] +
                           [os.path.join(gen, 'sprites.c'), os.path.join(gen, 'sounds.c'),
                            os.path.join(gen, 'music_data.c'), '-o', elf, '-lgcc'])
     subprocess.check_call(['sh4-linux-gnu-objcopy', '-O', 'binary', elf, binary])
     return open(binary, 'rb').read()
 
 
-def rom_of(program):
+def rom_of(program, title):
     rom = bytearray(b'\xff' * (2 * CHIP))
     rom[0:8] = b'SAMURAI\0'
-    rom[0x10:0x10 + len(TITLE)] = TITLE.encode()
+    rom[0x10:0x10 + len(title)] = title.encode()
     for i in range(20):
         entry = (2, 0, 0, 0, 0) if i == 0 else (0xFFFF, 0, 0, 0, 0)   # one pair of 4 MB
         rom[0x13C + i * 10:0x146 + i * 10] = struct.pack('>5H', *entry)
@@ -182,7 +184,7 @@ def rom_of(program):
     return chips
 
 
-def entry_of(chips, names):
+def entry_of(chips, names, name, title):
     def control(name, cid, switch, role, pad=None):
         c = {'name': name, 'id': cid, 'switch': switch, 'role': role}
         if pad:
@@ -192,7 +194,7 @@ def entry_of(chips, names):
     alt = lambda n, files, optional=False: dict({'name': n, 'type': 'alternative', 'data': files},
                                                 **({'optional': True} if optional else {}))
     return {
-        'name': NAME, 'title': TITLE, 'mach': 'hikaru',
+        'name': name, 'title': title, 'mach': 'hikaru',
         'rom_board': {'eprom_mb': CHIP >> 20},
         'controls': [
             control('START', 'start', '1P START', 'start'),
@@ -216,27 +218,37 @@ def entry_of(chips, names):
     }
 
 
+def build(game, flags, games_json):
+    about = json.load(open(os.path.join(game, 'game.json')))
+    name, title = about['name'], about['title']
+    program = compile_program(game, name, flags)
+    chips = rom_of(program, title)
+    names = (name + '.ic29', name + '.ic30')
+    with zipfile.ZipFile(os.path.join(OUT, name + '.zip'), 'w', zipfile.ZIP_DEFLATED) as z:
+        for n, c in zip(names, chips):
+            z.writestr(n, bytes(c))
+    entry = entry_of(chips, names, name, title)
+    json.dump(entry, open(os.path.join(OUT, name + '.json'), 'w'), indent=1)
+    if games_json:
+        games = json.load(open(games_json))
+        games['roms'] = [g for g in games['roms'] if g['name'] != name] + [entry]
+        json.dump(games, open(games_json, 'w'), indent=1)
+    print('%s (%s): program %d bytes, build/%s.zip' % (name, title, len(program), name))
+
+
 def main():
     parser = argparse.ArgumentParser()
-    parser.add_argument('--games', help="add the entry to this odin-games.json")
-    parser.add_argument('--start-wave', type=int, help="for the tests: a game starts at this wave")
+    parser.add_argument('--game', action='append', help="the folder of a game to build (default: every game)")
+    parser.add_argument('--games', help="add the entries to this odin-games.json")
+    parser.add_argument('--start-wave', type=int, help="for the tests: a game starts at this wave (or level)")
     parser.add_argument('--define', action='append', default=[], help="for the tests: -D for the compiler")
     args = parser.parse_args()
 
-    flags = ['-DSTART_WAVE=%d' % args.start_wave] if args.start_wave else []
-    program = compile_program(flags + ['-D' + d for d in args.define])
-    chips = rom_of(program)
-    names = (NAME + '.ic29', NAME + '.ic30')
-    with zipfile.ZipFile(os.path.join(OUT, NAME + '.zip'), 'w', zipfile.ZIP_DEFLATED) as z:
-        for n, c in zip(names, chips):
-            z.writestr(n, bytes(c))
-    entry = entry_of(chips, names)
-    json.dump(entry, open(os.path.join(OUT, NAME + '.json'), 'w'), indent=1)
-    if args.games:
-        games = json.load(open(args.games))
-        games['roms'] = [g for g in games['roms'] if g['name'] != NAME] + [entry]
-        json.dump(games, open(args.games, 'w'), indent=1)
-    print('%s: program %d bytes, build/%s.zip' % (NAME, len(program), NAME))
+    folders = args.game or sorted(d for d in os.listdir(HERE) if os.path.isfile(os.path.join(HERE, d, 'game.json')))
+    flags = (['-DSTART_WAVE=%d' % args.start_wave] if args.start_wave else []) + ['-D' + d for d in args.define]
+    os.makedirs(OUT, exist_ok=True)
+    for folder in folders:
+        build(os.path.join(HERE, folder), flags, args.games)
 
 
 if __name__ == '__main__':

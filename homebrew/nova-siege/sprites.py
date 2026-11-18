@@ -167,7 +167,7 @@ oyywwwwwwyyo
 }
 
 here = os.path.dirname(os.path.abspath(__file__))
-out = os.path.join(here, '..', 'assets')
+out = os.path.join(here, 'assets')
 os.makedirs(out, exist_ok=True)
 for name, art in SPRITES.items():
     rows = art.strip('\n').split('\n')

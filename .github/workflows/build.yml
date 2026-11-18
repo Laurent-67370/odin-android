@@ -32,14 +32,16 @@ jobs:
         run: |
           ./fetch-odin.sh
           echo "ODIN_COMMIT=$(cat odin.version)" >> "$GITHUB_ENV"
-      - name: The homebrew (homebrew/), in Odin's list of games
+      - name: The homebrew games (homebrew/), in Odin's list of games
         run: |
           python3 homebrew/build.py --games odin-src/odin-games.json
-          cp homebrew/build/odinhb.zip odinhb.zip
+          cp homebrew/build/*.zip .
       - uses: actions/upload-artifact@v4
         with:
-          name: odinhb
-          path: odinhb.zip
+          name: homebrew
+          path: |
+            odinhb.zip
+            odinshrd.zip
       - name: Signing key (secrets ODIN_KEYSTORE_B64, ODIN_KEYSTORE_PASSWORD)
         env:
           KEYSTORE_B64: ${{ secrets.ODIN_KEYSTORE_B64 }}
@@ -80,6 +82,6 @@ jobs:
         run: |
           cp app/build/outputs/apk/release/app-release.apk odin.apk
           gh release delete odin-apk --yes --cleanup-tag || true
-          gh release create odin-apk odin.apk odinhb.zip --target "$GITHUB_SHA" \
+          gh release create odin-apk odin.apk odinhb.zip odinshrd.zip --target "$GITHUB_SHA" \
             --title "Odin — APK Android" \
-            --notes "Odin (émulateur SEGA Hikaru / Gaelco ATV Track) pour Android ARM64, construit depuis Odin ${ODIN_COMMIT::7} et ${GITHUB_SHA::7}. Téléchargez odin.apk sur le téléphone, ouvrez-le et autorisez l'installation depuis cette source. Placez vos jeux dans le dossier Odin/roms du téléphone. odinhb.zip est le homebrew du dépôt (Nova Siege) : à mettre aussi dans Odin/roms, il demande le BIOS hikaru.zip et mie.zip."
+            --notes "Odin (émulateur SEGA Hikaru / Gaelco ATV Track) pour Android ARM64, construit depuis Odin ${ODIN_COMMIT::7} et ${GITHUB_SHA::7}. Téléchargez odin.apk sur le téléphone, ouvrez-le et autorisez l'installation depuis cette source. Placez vos jeux dans le dossier Odin/roms du téléphone. odinhb.zip (Nova Siege) et odinshrd.zip (Shard Storm) sont les jeux homebrew du dépôt : à mettre aussi dans Odin/roms, ils demandent le BIOS hikaru.zip et mie.zip."
