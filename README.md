@@ -7,6 +7,19 @@ Odin au commit de `odin.version`, applique `patches/0001-android.patch` et
 construit l'APK, publié dans la release **`odin-apk`** de ce dépôt :
 https://github.com/Laurent-67370/odin-android/releases/download/odin-apk/odin.apk
 
+<p align="center">
+  <img src="docs/starwars-racer.jpg" alt="Star Wars Racer Arcade à 60 images/s, en paysage, avec la manette tactile" width="640">
+</p>
+
+<p align="center">
+  <img src="docs/air-trix-portrait.jpg" alt="Air Trix en portrait, la manette tactile sous l'image" width="230">
+  &nbsp;
+  <img src="docs/games-list.jpg" alt="La liste des jeux d'Odin sur le téléphone" width="520">
+</p>
+
+<p align="center"><em>Star Wars Racer Arcade en course (60 images/s) ; Air Trix en portrait ; la liste des jeux.
+Captures d'un Snapdragon 8 Gen 2.</em></p>
+
 ## État
 
 | Point | État |
@@ -28,7 +41,18 @@ Connu, venant d'Odin lui-même : Air Trix peut planter à l'écran des meilleurs
 scores ([Tovarichtch/Odin#52](https://github.com/Tovarichtch/Odin/issues/52)).
 
 Le portage est présenté à l'auteur d'Odin dans
-[Tovarichtch/Odin#54](https://github.com/Tovarichtch/Odin/issues/54).
+[Tovarichtch/Odin#54](https://github.com/Tovarichtch/Odin/issues/54), avec un
+suivi des améliorations (manette tactile, adaptations par jeu, mémoire gardée
+en arrière-plan, homebrew).
+
+**Et iOS ?** Pas pour l'instant (question posée dans
+[Tovarichtch/Odin#56](https://github.com/Tovarichtch/Odin/issues/56)). Odin n'a
+pas d'interpréteur : il recompile toujours le SH-4 et l'ARM7 en ARM64, donc il
+lui faut un JIT, ce qu'iOS n'accorde qu'à une app installée en sideload avec un
+outil d'activation du JIT. Sa mémoire de code (`MAP_JIT`,
+`pthread_jit_write_protect_np`) devrait passer à la méthode des émulateurs iOS.
+Le reste (SDL3, MoltenVK, la manette tactile) se porterait ; il faudrait un Mac
+pour construire et un iPhone pour tester.
 
 ## Installer
 
@@ -47,6 +71,10 @@ OpenGL ES 3.2 reste au choix, page Display (option « API »). L'émulation
 Hikaru est lourde : un téléphone haut de gamme récent est conseillé.
 
 ## Performances
+
+<p align="center">
+  <img src="docs/starwars-course.jpg" alt="Le choix de la course de Star Wars Racer Arcade, 60 images/s" width="560">
+</p>
 
 Sur un Snapdragon 8 Gen 2 (Adreno 740), en Vulkan, Air Trix tourne à **60 images
 par seconde** en course : la carte graphique travaille environ 9 ms sur les
@@ -117,6 +145,8 @@ par seconde** en course : la carte graphique travaille environ 9 ms sur les
   jeux) et **QUIT** (quitter Odin). GAMES et QUIT demandent un second toucher
   (« SURE? ») pour éviter une sortie par erreur. Toucher ailleurs referme le
   panneau.
+
+  <img src="docs/shortcuts.jpg" alt="Le panneau des raccourcis, QUIT qui demande un second toucher" width="480">
 - **Portrait ou paysage**, comme on tient le téléphone (le verrouillage de la
   rotation est respecté) : la manette se place autour de l'image dans les deux.
   En paysage, tout est dans deux colonnes sur les côtés (à gauche LT, LB, MENU,
@@ -186,6 +216,12 @@ Pour y jouer sur le téléphone : télécharger
 `Odin/roms`, à côté de `hikaru.zip` et `mie.zip`. Le jeu s'appelle **Nova
 Siege** dans la liste. Les commandes répondent une dizaine de secondes après
 le lancement (l'écran l'indique).
+
+<p align="center">
+  <img src="homebrew/docs/demo.png" alt="NOVA SIEGE : l'écran titre et une partie" width="640">
+  <br>
+  <img src="homebrew/docs/waves.png" alt="NOVA SIEGE : la vague des pinces avec ses blindés, et le vaisseau-mère" width="640">
+</p>
 
 ## Construire soi-même
 

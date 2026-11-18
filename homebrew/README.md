@@ -61,6 +61,8 @@ l'écran titre affiche « WAITING FOR THE I/O BOARD... ».
 
 ![NOVA SIEGE dans Odin : l'écran titre et une partie](docs/demo.png)
 
+![La vague des pinces avec ses blindés orange, et le vaisseau-mère de la vague 5](docs/waves.png)
+
 ## Jouer sur le téléphone
 
 L'APK connaît le jeu, et `odinhb.zip` est publié avec lui à chaque version :
