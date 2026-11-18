@@ -110,10 +110,19 @@ remise par B sur l'écran titre, comme pour NOVA SIEGE.
 
 | Commande | Action |
 |---|---|
+| Doigt sur l'image (téléphone) ou souris | la raquette se place sous le doigt |
+| Toucher l'image | lancer la balle ; tirer au laser (comme A) |
 | Stick (ou flèches) gauche / droite | déplacer la raquette (elle accélère si on tient) |
 | A / bouton 1 | lancer la balle ; tirer au laser |
 | START | commencer une partie |
 | B / bouton 2 (écran titre) | musique on / off |
+
+Sur le téléphone, la raquette suit le doigt : le jeu se déclare dans la liste
+d'Odin avec un viseur (`"aim": true` dans son `game.json`, deux axes analogiques
+comme la lance de Brave Firefighters), et la manette tactile passe en mode
+visée. Le programme JVS de la MIE lit les axes à chaque relevé et garde
+l'octet haut du canal n à l'adresse Z80 `E203 + 2n` : 0 au bord gauche de
+l'image, FF au bord droit.
 
 ![SHARD STORM dans Odin : l'écran titre et le premier niveau](docs/shard.png)
 
