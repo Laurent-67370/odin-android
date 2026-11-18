@@ -36,6 +36,7 @@ Captures d'un Snapdragon 8 Gen 2.</em></p>
 | Records et réglages des bornes | gardés, aussi quand Android ferme l'app en arrière-plan |
 | Mises à jour | par-dessus l'ancienne version (APK signé d'une clé fixe) |
 | **NOVA SIEGE** (homebrew du dépôt) | jeu de tir original pour la Hikaru : son, musique, record gardé, vagues variées, vaisseau-mère ; [odinhb.zip](https://github.com/Laurent-67370/odin-android/releases/download/odin-apk/odinhb.zip) dans `Odin/roms` |
+| **SHARD STORM** (homebrew du dépôt) | casse-briques original : 12 niveaux, capsules, musique, record gardé ; [odinshrd.zip](https://github.com/Laurent-67370/odin-android/releases/download/odin-apk/odinshrd.zip) dans `Odin/roms` |
 
 Connu, venant d'Odin lui-même : Air Trix peut planter à l'écran des meilleurs
 scores ([Tovarichtch/Odin#52](https://github.com/Tovarichtch/Odin/issues/52)).
@@ -202,9 +203,20 @@ par seconde** en course : la carte graphique travaille environ 9 ms sur les
 
 ## Homebrew
 
-Le dossier [`homebrew/`](homebrew/) contient un programme fait maison pour la
-borne SEGA Hikaru : il démarre par le BIOS SEGA comme un vrai jeu, affiche
-par la couche 2D et lit les commandes par le JVS. Le jeu, **NOVA SIEGE**, est un jeu de
+Le dossier [`homebrew/`](homebrew/) contient deux jeux faits maison pour la
+borne SEGA Hikaru : ils démarrent par le BIOS SEGA comme de vrais jeux,
+affichent par la couche 2D, lisent les commandes par le JVS et jouent leur son
+sur l'AICA. **SHARD STORM** est un casse-briques original : douze niveaux de
+cristal, briques d'argent, d'or et bombes, six capsules (raquette large,
+multi-balles, laser, ralenti, colle, vie), musique et record gardé ;
+[odinshrd.zip](https://github.com/Laurent-67370/odin-android/releases/download/odin-apk/odinshrd.zip)
+dans `Odin/roms`.
+
+<p align="center">
+  <img src="homebrew/docs/shard.png" alt="SHARD STORM : l'écran titre et le premier niveau" width="640">
+</p>
+
+Le premier jeu, **NOVA SIEGE**, est un jeu de
 tir à écran fixe original : une formation d'aliens qui marche et accélère, des
 boucliers destructibles, un pillard bonus, des vagues qui changent de forme,
 des blindés, des plongeurs, un vaisseau-mère toutes les 5 vagues, du son, de
