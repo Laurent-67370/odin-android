@@ -15,12 +15,14 @@ https://github.com/Laurent-67370/odin-android/releases/download/odin-apk/odin.ap
 | Brave Firefighters | jouable, visée au doigt : le jet part sous le doigt |
 | Gaelco Football | second stick tactile pour le tir, à essayer |
 | Virtual-On Force | deux leviers sur les deux sticks tactiles, à essayer |
-| Manette tactile | stick flottant, boutons, gâchettes, vibration, panneau de raccourcis ; en paysage, rangée dans deux colonnes latérales |
+| Manette tactile | stick flottant, boutons, gâchettes, vibration, panneau de raccourcis ; en paysage, rangée dans deux colonnes latérales ; stick plus sensible dans les jeux à directions, chaque tape comptée même très brève |
 | Format de l'image | 4:3 (borne), 16:9 ou plein écran |
 | Menus | agrandis ×3 en paysage, police Roboto nette |
 | Portrait / paysage | les deux, bascule en jeu |
 | Quitter puis revenir dans l'app | le jeu reprend (pas d'écran noir) |
+| Records et réglages des bornes | gardés, aussi quand Android ferme l'app en arrière-plan |
 | Mises à jour | par-dessus l'ancienne version (APK signé d'une clé fixe) |
+| **NOVA SIEGE** (homebrew du dépôt) | jeu de tir original pour la Hikaru : son, record gardé, vagues variées, vaisseau-mère ; [odinhb.zip](https://github.com/Laurent-67370/odin-android/releases/download/odin-apk/odinhb.zip) dans `Odin/roms` |
 
 Connu, venant d'Odin lui-même : Air Trix peut planter à l'écran des meilleurs
 scores ([Tovarichtch/Odin#52](https://github.com/Tovarichtch/Odin/issues/52)).
