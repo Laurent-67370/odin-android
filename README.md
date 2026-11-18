@@ -22,7 +22,7 @@ https://github.com/Laurent-67370/odin-android/releases/download/odin-apk/odin.ap
 | Quitter puis revenir dans l'app | le jeu reprend (pas d'écran noir) |
 | Records et réglages des bornes | gardés, aussi quand Android ferme l'app en arrière-plan |
 | Mises à jour | par-dessus l'ancienne version (APK signé d'une clé fixe) |
-| **NOVA SIEGE** (homebrew du dépôt) | jeu de tir original pour la Hikaru : son, record gardé, vagues variées, vaisseau-mère ; [odinhb.zip](https://github.com/Laurent-67370/odin-android/releases/download/odin-apk/odinhb.zip) dans `Odin/roms` |
+| **NOVA SIEGE** (homebrew du dépôt) | jeu de tir original pour la Hikaru : son, musique, record gardé, vagues variées, vaisseau-mère ; [odinhb.zip](https://github.com/Laurent-67370/odin-android/releases/download/odin-apk/odinhb.zip) dans `Odin/roms` |
 
 Connu, venant d'Odin lui-même : Air Trix peut planter à l'écran des meilleurs
 scores ([Tovarichtch/Odin#52](https://github.com/Tovarichtch/Odin/issues/52)).
@@ -177,8 +177,8 @@ borne SEGA Hikaru : il démarre par le BIOS SEGA comme un vrai jeu, affiche
 par la couche 2D et lit les commandes par le JVS. Le jeu, **NOVA SIEGE**, est un jeu de
 tir à écran fixe original : une formation d'aliens qui marche et accélère, des
 boucliers destructibles, un pillard bonus, des vagues qui changent de forme,
-des blindés, des plongeurs, un vaisseau-mère toutes les 5 vagues, du son et
-un record gardé.
+des blindés, des plongeurs, un vaisseau-mère toutes les 5 vagues, du son, de
+la musique et un record gardé.
 
 Pour y jouer sur le téléphone : télécharger
 [odinhb.zip](https://github.com/Laurent-67370/odin-android/releases/download/odin-apk/odinhb.zip)

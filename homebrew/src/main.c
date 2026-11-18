@@ -6,13 +6,14 @@
  * shields the bombs and the shots wear away. A raider crosses the top now
  * and then. The waves change: the shape of the formation, armoured aliens
  * that take two hits, divers that leave it to swoop on the fighter, and a
- * mothership every fifth wave. Sound by the AICA; the best score kept in
- * the backup RAM.
+ * mothership every fifth wave. Sound and music by the AICA; the best score
+ * and the choice of music kept in the backup RAM.
  *
  * Copyright (C) 2026 the odin-android contributors
  * GPL 3 or later, as Odin.
  */
 #include "gfx.h"
+#include "music.h"
 #include "sound.h"
 #include "sprites.h"
 
@@ -58,6 +59,8 @@ enum { V_SHOT, V_BOOM, V_BLAST, V_STEP, V_SIREN, V_JINGLE, V_CLANG, V_SWOOP };
 /* Where the best score is kept in the backup RAM */
 #define RECORD_AT 0xF000u
 #define RECORD_MAGIC 0x4753564Eu	/* "NVSG" */
+#define SETTINGS_AT (RECORD_AT + 16u)
+#define SETTINGS_MAGIC 0x5353564Eu	/* "NVSS" */
 
 typedef enum { TITLE, PLAY, DYING, CLEARED, OVER } state_t;
 
@@ -144,6 +147,22 @@ static void record_load(void)
 	backup_read(RECORD_AT, r, sizeof(r));
 	if (r[0] == RECORD_MAGIC && (r[1] ^ 0x5A5A5A5Au) == r[2] && r[1] < 1000000u)
 		g.hi = g.kept_hi = r[1];
+}
+
+/* Music on or off, as last chosen */
+static void settings_load(void)
+{
+	uint32_t r[2];
+
+	backup_read(SETTINGS_AT, r, sizeof(r));
+	if (r[0] == SETTINGS_MAGIC)
+		music_enable(r[1] != 0);
+}
+
+static void settings_keep(void)
+{
+	const uint32_t r[2] = { SETTINGS_MAGIC, (uint32_t)music_enabled() };
+	backup_write(SETTINGS_AT, r, sizeof(r));
 }
 
 static void record_keep(void)
@@ -323,6 +342,7 @@ static void wave_start(void)
 	g.banner = 150;
 
 	g.boss_on = boss_wave();
+	music_play(g.boss_on ? MUSIC_BOSS : MUSIC_GAME);
 	if (g.boss_on) {
 		g.boss_max = g.boss_hp = 30 + 10 * (int)(g.wave / 5 - 1);
 		g.boss_x = (SCREEN_W - BOSS_W) / 2;
@@ -710,6 +730,7 @@ static void play(uint16_t in, uint16_t pressed)
 		g.timer = 150;
 		sound_stop(V_SIREN);
 		g.raider_on = 0;
+		music_stop();
 		sound_play(V_JINGLE, SND_CLEARED, 1024, 13, 0);
 		return;
 	}
@@ -866,6 +887,7 @@ static void draw_title(void)
 		draw_centred(385, "WAITING FOR THE I/O BOARD...", RED, 2);
 	else if ((g.frame >> 5) & 1)
 		draw_centred(380, "PRESS START", WHITE, 3);
+	draw_centred(418, music_enabled() ? "B / B2: MUSIC ON" : "B / B2: MUSIC OFF", GREY, 2);
 	draw_centred(445, "STICK: MOVE   A / B1: FIRE", GREY, 2);
 }
 
@@ -879,6 +901,7 @@ void main(void)
 	input_init();
 	sound_init();
 	record_load();
+	settings_load();
 #ifdef RECORD_TEST	/* for the tests: a record kept at power-on */
 	g.hi = RECORD_TEST;
 	record_keep();
@@ -899,6 +922,11 @@ void main(void)
 
 		switch (g.state) {
 		case TITLE:
+			music_play(MUSIC_TITLE);
+			if (pressed & (IN_B2 | IN_B3)) {
+				music_enable(!music_enabled());
+				settings_keep();
+			}
 			if (pressed & IN_START)
 				game_start();
 			break;
@@ -914,6 +942,7 @@ void main(void)
 					g.timer = 240;
 					sound_stop(V_SIREN);
 					g.raider_on = 0;
+					music_stop();
 					sound_play(V_JINGLE, SND_OVER, 1024, 13, 0);
 					record_keep();
 				} else {
@@ -938,6 +967,7 @@ void main(void)
 		if (g.score > g.hi)
 			g.hi = g.score;
 		sound_frame();
+		music_frame();
 
 		clear(SKY);
 		draw_scores();
