@@ -189,6 +189,10 @@ titre) : `nova-siege/` donne `build/odinhb.zip`, `shard-storm/` donne
 `<nom>.ic30`) et se met dans le dossier des ROM d'Odin, à côté de
 `hikaru.zip` et `mie.zip`.
 
+Chaque zip porte aussi la description du jeu (`odin-game.json`, l'entrée de
+la liste, marquée `"homebrew": true`) : sur le téléphone, MENU → File → Add
+games… l'ajoute à la liste d'Odin, sans nouvel APK.
+
 Pour un nouveau jeu : un dossier avec `game.json`, `main.c`, `assets/` (ses
 sprites en PNG), `sounds.py` et `music.py` (qui s'appuient sur
 `tools/synth.py`).

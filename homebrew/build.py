@@ -195,6 +195,8 @@ def entry_of(chips, names, name, title, aim=False):
                                                 **({'optional': True} if optional else {}))
     return {
         'name': name, 'title': title, 'mach': 'hikaru',
+        # a game of this folder: an import may put a newer one in its place
+        'homebrew': True,
         'rom_board': {'eprom_mb': CHIP >> 20},
         'controls': [
             control('START', 'start', '1P START', 'start'),
@@ -232,6 +234,10 @@ def build(game, flags, games_json):
         for n, c in zip(names, chips):
             z.writestr(n, bytes(c))
     entry = entry_of(chips, names, name, title, about.get('aim', False))
+    # Its description in its archive too: importing it adds the game to the
+    # list, without a new APK
+    with zipfile.ZipFile(os.path.join(OUT, name + '.zip'), 'a', zipfile.ZIP_DEFLATED) as z:
+        z.writestr('odin-game.json', json.dumps(entry, indent=1))
     json.dump(entry, open(os.path.join(OUT, name + '.json'), 'w'), indent=1)
     if games_json:
         games = json.load(open(games_json))
