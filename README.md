@@ -78,8 +78,8 @@ pas d'interpréteur : il recompile toujours le SH-4 et l'ARM7 en ARM64, donc il
 lui faut un JIT, ce qu'iOS n'accorde qu'à une app installée en sideload avec un
 outil d'activation du JIT. Sa mémoire de code (`MAP_JIT`,
 `pthread_jit_write_protect_np`) devrait passer à la méthode des émulateurs iOS.
-Le reste (SDL3, MoltenVK, la manette tactile) se porterait ; il faudrait un Mac
-pour construire et un iPhone pour tester.
+Le reste (SDL3, MoltenVK, la manette tactile) se porte : l'`.ipa` est construit
+sur les Mac de GitHub, et ce sont les testeurs qui l'essaient sur leur iPhone.
 
 ## Installer
 
