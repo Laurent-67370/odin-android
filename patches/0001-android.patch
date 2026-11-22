@@ -3852,7 +3852,7 @@ index 01c47b0..ecac89a 100644
  	/* The event that says the answer has come, and the answer, once */
  	Uint32 event() const;
 diff --git a/src/odin/host/ui/menu.cpp b/src/odin/host/ui/menu.cpp
-index 0678015..564e27e 100644
+index 0678015..809eb6c 100644
 --- a/src/odin/host/ui/menu.cpp
 +++ b/src/odin/host/ui/menu.cpp
 @@ -28,6 +28,7 @@
@@ -3863,7 +3863,7 @@ index 0678015..564e27e 100644
  #include <optional>
  #include <utility>
  
-@@ -136,6 +137,11 @@ constexpr float WIDE = 1.5f;
+@@ -136,6 +137,14 @@ constexpr float WIDE = 1.5f;
   * sooner, as the window is larger (the drawings of the page Input already
   * are, at 1600 by 900) */
  constexpr float LETTERS_UP = 0.45f;
@@ -3871,11 +3871,14 @@ index 0678015..564e27e 100644
 +/* The least room the menu keeps on a phone, in points (Menu::follow_scale) */
 +constexpr float PHONE_W = 760.0f;
 +constexpr float PHONE_H = 340.0f;
++/* Held upright: the least width the menu keeps, in points (its bar takes
++ * some 350) */
++constexpr float UPRIGHT_W = 420.0f;
 +#endif
  
  /* The size of the menu in a window of that size, and the size it is made
   * for */
-@@ -400,8 +406,24 @@ Menu::follow_scale()
+@@ -400,8 +409,33 @@ Menu::follow_scale()
  	SDL_GetWindowSize(m_window, &w, &h);
  
  	const auto [size, made] = menu_size(static_cast<float>(w), static_cast<float>(h));
@@ -3897,11 +3900,20 @@ index 0678015..564e27e 100644
 +			scale = k;
 +			break;
 +		}
++	/* Held upright, too narrow for that: as large as the menu still fits
++	 * across (2.5 on a phone 1080 pixels wide), the pages laying themselves
++	 * out for a tall window (menu_library.cpp) */
++	if (h > w)
++		for (float k = most; k > scale; k -= 0.5f)
++			if (static_cast<float>(w) / k >= UPRIGHT_W) {
++				scale = k;
++				break;
++			}
 +#endif
  
  	if (scale == m_scale && density == m_density)
  		return;
-@@ -410,7 +432,7 @@ Menu::follow_scale()
+@@ -410,7 +444,7 @@ Menu::follow_scale()
  
  	style = m_style;
  	style.ScaleAllSizes(scale);
@@ -3910,7 +3922,7 @@ index 0678015..564e27e 100644
  	m_scale = scale;
  	m_density = density;
  }
-@@ -424,17 +446,34 @@ void
+@@ -424,17 +458,34 @@ void
  Menu::add_fonts()
  {
  	static constexpr float COZETTE_SIZE = 13.0f;
@@ -3950,7 +3962,7 @@ index 0678015..564e27e 100644
  	m_fonts = std::make_unique<SystemFonts>();
  	for (const SystemFonts::Font &font : m_fonts->fonts()) {
  		ImFontConfig more;
-@@ -667,6 +706,15 @@ Menu::page_display(MenuKit &kit, MenuState &state) const
+@@ -667,6 +718,15 @@ Menu::page_display(MenuKit &kit, MenuState &state) const
  			state.upscale_mode = static_cast<unsigned>(upscale_mode);
  	});
  
@@ -4044,6 +4056,75 @@ index 0282be6..1931472 100644
  	if (item("Close game", b.key(Action::CLOSE_GAME), false, state.game))
  		b.ask(Ask::CLOSE);
  	if (item("Reset", b.key(Action::RESET), false, state.game))
+diff --git a/src/odin/host/ui/menu_library.cpp b/src/odin/host/ui/menu_library.cpp
+index 3f7b4e4..1571773 100644
+--- a/src/odin/host/ui/menu_library.cpp
++++ b/src/odin/host/ui/menu_library.cpp
+@@ -55,6 +55,9 @@ constexpr float GAP = 12.0f;
+ constexpr float TILE_INSIDE = 7.0f;
+ constexpr float SHEET_INSIDE = 14.0f;
+ constexpr float SHEET_SHARE = 0.31f;
++/* A tall window (a phone held upright): the sheet under the tiles, that
++ * share of the height */
++constexpr float SHEET_UNDER = 0.28f;
+ constexpr float TILE_W = 4.0f;
+ constexpr float TILE_H = 3.0f;
+ constexpr int COLUMNS = 3;
+@@ -268,13 +271,21 @@ Menu::build_library(LibraryState &state, BarState &bar_state)
+ 	const std::string &quit = bar_state.keys[static_cast<size_t>(Hotkeys::Action::QUIT)];
+ 	const std::string keys = "Enter" + (state.press.empty() ? "" : " or " + state.press) + ": play" +
+ 	                         (quit.empty() ? "" : "    " + quit + ": quit");
++#if defined(__ANDROID__)
++	/* A phone held upright: the sheet under the tiles, the keys left out of
++	 * the head (no room, and no keyboard) */
++	const bool upright = room.y > room.x;
++#else
++	const bool upright = false;
++#endif
+ 
+ 	MenuKit::write(list, { margin, below + margin }, palette.cabinet, "SELECT A GAME", size, size * TITLE_SPACING);
+ 
+-	const float keys_x = room.x - margin - ImGui::CalcTextSize(keys.c_str()).x;
++	const float keys_x = room.x - margin - (upright ? 0.0f : ImGui::CalcTextSize(keys.c_str()).x);
+ 	const float filter_h = kit.button_size("Filter").y;
+ 
+-	list->AddText({ keys_x, below + margin }, palette.faint, keys.c_str());
++	if (!upright)
++		list->AddText({ keys_x, below + margin }, palette.faint, keys.c_str());
+ 	filter_button(kit, state, { 0.0f, below + margin + (line - filter_h) / 2.0f }, keys_x - kit.px(20.0f));
+ 
+ 	const float under = below + margin + line + kit.px(8.0f);
+@@ -292,8 +303,10 @@ Menu::build_library(LibraryState &state, BarState &bar_state)
+ 	};
+ 	const bool grouped = state.systems.size() > 1;
+ 	const float top = under + kit.px(14.0f), bottom = room.y - margin;
+-	const float sheet_w = std::round((room.x - 2.0f * margin) * SHEET_SHARE);
+-	const float grid_w = room.x - 2.0f * margin - sheet_w - gap;
++	const float sheet_w = upright ? room.x - 2.0f * margin : std::round((room.x - 2.0f * margin) * SHEET_SHARE);
++	const float sheet_h = upright ? std::round((bottom - top) * SHEET_UNDER) : bottom - top;
++	const float grid_w = upright ? sheet_w : room.x - 2.0f * margin - sheet_w - gap;
++	const float grid_bottom = upright ? bottom - sheet_h - gap : bottom;
+ 	const float head_h = std::round(line + kit.px(12.0f));
+ 	std::vector<Group> groups;
+ 	std::vector<std::pair<int, int>> spots;	/* row, column of each tile */
+@@ -319,7 +332,7 @@ Menu::build_library(LibraryState &state, BarState &bar_state)
+ 
+ 		const float rows = static_cast<float>(std::max(1, row + 1)), across = static_cast<float>(columns);
+ 		const float heads = static_cast<float>(groups.size()) * head_h;
+-		const float high = (bottom - top - heads - (rows - 1.0f) * gap) / rows;
++		const float high = (grid_bottom - top - heads - (rows - 1.0f) * gap) / rows;
+ 
+ 		return std::floor(std::min((grid_w - (across - 1.0f) * gap) / across, high * TILE_W / TILE_H));
+ 	};
+@@ -437,7 +450,7 @@ Menu::build_library(LibraryState &state, BarState &bar_state)
+ 	/* The sheet of the game chosen: its title, its name in MAME, its
+ 	 * system, what is known of it; or what it lacks, where it was looked for, the folders
+ 	 * to choose; how to play it at its foot */
+-	const ImVec2 sa = { room.x - margin - sheet_w, top }, sb = { room.x - margin, bottom };
++	const ImVec2 sa = { room.x - margin - sheet_w, bottom - sheet_h }, sb = { room.x - margin, bottom };
+ 	const float inside = kit.px(SHEET_INSIDE), x = sa.x + inside, width = sheet_w - 2.0f * inside;
+ 	const std::string play = "Enter" + (state.press.empty() ? "" : ", " + state.press) + " or click again: play";
+ 	const char enter[] = "Enter";
 diff --git a/src/odin/host/ui/menu_session.cpp b/src/odin/host/ui/menu_session.cpp
 index 430d3ff..26a3b94 100644
 --- a/src/odin/host/ui/menu_session.cpp
