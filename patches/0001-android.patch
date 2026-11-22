@@ -1,5 +1,5 @@
 diff --git a/CMakeLists.txt b/CMakeLists.txt
-index e034434..086a6e6 100644
+index e034434..a6a2729 100644
 --- a/CMakeLists.txt
 +++ b/CMakeLists.txt
 @@ -16,6 +16,23 @@ include(GNUInstallDirs)
@@ -181,6 +181,15 @@ index e034434..086a6e6 100644
  set_target_properties(odin PROPERTIES CXX_STANDARD 20 CXX_STANDARD_REQUIRED ON CXX_EXTENSIONS OFF
  	RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin)
  target_include_directories(odin PRIVATE src)
+@@ -494,7 +555,7 @@ foreach(glsl ${FILTER_GLSL})
+ endforeach()
+ add_custom_target(spirv ALL DEPENDS ${FILTER_SPIRV})
+ 
+-install(TARGETS odin RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR})
++install(TARGETS odin RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR} BUNDLE DESTINATION .)
+ install(DIRECTORY ${DATA} DESTINATION ${CMAKE_INSTALL_DATADIR})
+ if(UNIX AND NOT APPLE)
+ 	install(FILES dist/odin.desktop DESTINATION ${CMAKE_INSTALL_DATADIR}/applications)
 diff --git a/dist/ios/Info.plist.in b/dist/ios/Info.plist.in
 new file mode 100644
 index 0000000..88ce9a1
