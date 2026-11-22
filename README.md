@@ -39,6 +39,7 @@ s'affiche dans MENU → About et dans le titre de la publication).
 | Records et réglages des bornes | gardés, aussi quand Android ferme l'app en arrière-plan |
 | Mises à jour | par-dessus l'ancienne version (APK signé d'une clé fixe) |
 | Ajouter des jeux | MENU → File → Add games… : le sélecteur du téléphone, plusieurs fichiers à la fois ; chaque archive copiée dans `Odin/roms` sous le bon nom (reconnue à son contenu), puis vérifiée : « ready to play », BIOS manquant, ancienne version. Essayé sur le téléphone |
+| Liste des jeux | par système (SEGA Hikaru, Gaelco), puis les jeux maison dans une rubrique HOMEBREW |
 | Jeux maison sans nouvel APK | leur zip porte leur description : l'import seul les ajoute à la liste (essayé sur le téléphone avec GLOWBUG GARDEN) |
 | Télécharger les jeux maison | MENU → File → Get homebrew games… : la liste des jeux maison publiés, chacun « new », « installed » ou « update » ; ceux cochés sont téléchargés puis ajoutés comme par l'import |
 | **NOVA SIEGE** (homebrew du dépôt) | jeu de tir original : son, musique, record gardé, vagues variées, vaisseau-mère ; [odinhb.zip](https://github.com/Laurent-67370/odin-android/releases/download/odin-apk/odinhb.zip) |

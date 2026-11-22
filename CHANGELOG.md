@@ -21,6 +21,8 @@ Android dans les informations de l'application.
 - Deux jeux maison de plus : **VOLT VIPER** et **GLOWBUG GARDEN**.
 - Les PR vers Odin sont vérifiées pour Android (la première : Odin#58).
 - Ce numéro de version, et ce fichier.
+- Les jeux maison dans une rubrique **HOMEBREW** de la liste, après les jeux
+  des bornes.
 
 ## 0.3 — 17 et 18 novembre 2026
 
