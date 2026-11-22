@@ -22,6 +22,9 @@ Captures d'un Snapdragon 8 Gen 2.</em></p>
 
 ## État
 
+Version en cours : voir [CHANGELOG.md](CHANGELOG.md) (le numéro, `1.0.N`,
+s'affiche dans MENU → About et dans le titre de la publication).
+
 | Point | État |
 |---|---|
 | Air Trix, NASCAR Arcade, Star Wars Racer Arcade | jouables, **60 images/s** (Snapdragon 8 Gen 2), aussi en résolution 2× |

@@ -17,7 +17,10 @@ android {
         // Above the builds of Emberwake (its run numbers, up to ~50): Android
         // installs over only a version of a higher code
         versionCode = 1000 + (System.getenv("GITHUB_RUN_NUMBER") ?: "1").toInt()
-        versionName = "0.1-" + (System.getenv("ODIN_COMMIT") ?: "dev").take(7)
+        // majeur.mineur of version.txt, then the count of the commits (the
+        // workflow gives ODIN_ANDROID_VERSION; CHANGELOG.md tells each one)
+        versionName = System.getenv("ODIN_ANDROID_VERSION")
+            ?: (rootProject.file("version.txt").readText().trim() + ".dev")
 
         ndk { abiFilters += listOf("arm64-v8a") }
         externalNativeBuild {
@@ -28,7 +31,8 @@ android {
                     "-DODIN_NATIVE=OFF",
                     "-DGLSLANG=$glslang",
                     "-DAWK=/usr/bin/awk",
-                    "-DODIN_VERSION=android-" + (System.getenv("ODIN_COMMIT") ?: "dev").take(7),
+                    "-DODIN_VERSION=android-" + (System.getenv("ODIN_ANDROID_VERSION") ?: "dev") +
+                        "-odin-" + (System.getenv("ODIN_COMMIT") ?: "dev").take(7),
                 )
                 targets += listOf("odin", "SDL3-shared")
             }
