@@ -35,6 +35,7 @@ Captures d'un Snapdragon 8 Gen 2.</em></p>
 | Quitter puis revenir dans l'app | le jeu reprend (pas d'écran noir) |
 | Records et réglages des bornes | gardés, aussi quand Android ferme l'app en arrière-plan |
 | Mises à jour | par-dessus l'ancienne version (APK signé d'une clé fixe) |
+| Ajouter des jeux | MENU → File → Add games… : le sélecteur du téléphone, chaque archive copiée dans `Odin/roms` sous le bon nom (reconnue à son contenu) |
 | **NOVA SIEGE** (homebrew du dépôt) | jeu de tir original pour la Hikaru : son, musique, record gardé, vagues variées, vaisseau-mère ; [odinhb.zip](https://github.com/Laurent-67370/odin-android/releases/download/odin-apk/odinhb.zip) dans `Odin/roms` |
 | **SHARD STORM** (homebrew du dépôt) | casse-briques original : 12 niveaux, capsules, musique, record gardé ; [odinshrd.zip](https://github.com/Laurent-67370/odin-android/releases/download/odin-apk/odinshrd.zip) dans `Odin/roms` |
 
@@ -66,6 +67,14 @@ pour construire et un iPhone pour tester.
    - `Odin/artwork` : les images d'`Odin-Artwork.zip` (facultatif) ;
    - `odin.ini` et `odin.log` y sont écrits.
    Sans l'autorisation, Odin utilise `Android/data/org.odinport.android/files`.
+3. Ajouter les jeux : **MENU → File → Add games…** ouvre le sélecteur de
+   fichiers du téléphone (plusieurs fichiers à la fois, depuis Téléchargements,
+   Drive, une carte SD…). Chaque archive est copiée dans `Odin/roms` sous le nom
+   du jeu qu'elle contient, reconnu au contenu (CRC) : `braveff (1).zip` devient
+   `braveff.zip`, et une nouvelle version remplace l'ancienne. La liste des jeux
+   se met à jour aussitôt ; un message dit ce qui a été ajouté et ce qui n'est
+   pas un jeu connu d'Odin. Copier les archives à la main dans `Odin/roms`
+   marche toujours.
 
 Il faut un téléphone ARM64. Odin dessine par défaut avec **Vulkan** (conseillé) ;
 OpenGL ES 3.2 reste au choix, page Display (option « API »). L'émulation
