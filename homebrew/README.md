@@ -2,13 +2,14 @@
 
 Des jeux faits maison qui tournent sur la borne **SEGA Hikaru** telle qu'Odin
 l'émule : de vrais programmes pour son processeur SH-4, lancés par le BIOS
-SEGA comme les jeux d'origine. Deux jeux originaux, qui partagent une même
+SEGA comme les jeux d'origine. Trois jeux originaux, qui partagent une même
 bibliothèque (`src/`) :
 
 | Jeu | Genre | Fichier |
 |---|---|---|
 | [**NOVA SIEGE**](#nova-siege) | tir à écran fixe | `odinhb.zip` |
 | [**SHARD STORM**](#shard-storm) | casse-briques | `odinshrd.zip` |
+| [**VOLT VIPER**](#volt-viper) | serpent | `odinvipr.zip` |
 
 ## NOVA SIEGE
 
@@ -128,18 +129,47 @@ l'image, FF au bord droit.
 
 ![Le losange du niveau 5 (bombes, brique scintillante) et la forteresse du niveau 10 (or, argent)](docs/shard-levels.png)
 
+## VOLT VIPER
+
+Une vipère de lumière avance sur une grille. Chaque **cellule d'énergie**
+qu'elle mange l'allonge de trois anneaux ; elle ne doit toucher ni un mur ni sa
+propre queue. Une **étincelle** apparaît de temps en temps, qui rapporte plus
+tant qu'elle brille. **Dix cellules** finissent un niveau ; **huit niveaux** de
+murs (le champ libre, les barres, les blocs, les portes, la croix, la boîte aux
+quatre portes, les piliers, les lacets), puis ils recommencent, plus vite. La
+vipère accélère tous les deux niveaux.
+
+Trois vipères, une de plus à 5000 points puis tous les 7500. **Son** : la
+bouchée (plus aiguë à chaque cellule du niveau), l'étincelle, le choc, les
+jingles. **Musique** : deux morceaux composés pour le jeu (mi mineur pour
+l'écran titre, la mineur pour le jeu). Record gardé ; B sur l'écran titre
+coupe ou remet la musique.
+
+| Commande | Action |
+|---|---|
+| Stick (ou flèches) | tourner ; deux virages d'avance sont retenus |
+| START | commencer une partie |
+| B / bouton 2 (écran titre) | musique on / off |
+
+![VOLT VIPER dans Odin : l'écran titre et une partie](docs/viper.png)
+
+![La boîte aux quatre portes du niveau 6 et les lacets du niveau 8](docs/viper-levels.png)
+
 ## Jouer sur le téléphone
 
-L'APK connaît les deux jeux, et leurs fichiers sont publiés avec lui à chaque
+L'APK connaît les trois jeux, et leurs fichiers sont publiés avec lui à chaque
 version :
 
 1. Télécharger
    [odinhb.zip](https://github.com/Laurent-67370/odin-android/releases/download/odin-apk/odinhb.zip)
-   (NOVA SIEGE) et
+   (NOVA SIEGE),
    [odinshrd.zip](https://github.com/Laurent-67370/odin-android/releases/download/odin-apk/odinshrd.zip)
-   (SHARD STORM).
-2. Les mettre dans `Odin/roms`, à côté de `hikaru.zip` et `mie.zip`.
-3. Lancer **Nova Siege** ou **Shard Storm** dans la liste des jeux.
+   (SHARD STORM) et
+   [odinvipr.zip](https://github.com/Laurent-67370/odin-android/releases/download/odin-apk/odinvipr.zip)
+   (VOLT VIPER).
+2. Les ajouter : MENU → File → Add games… (ou les mettre à la main dans
+   `Odin/roms`, à côté de `hikaru.zip` et `mie.zip`).
+3. Lancer **Nova Siege**, **Shard Storm** ou **Volt Viper** dans la liste des jeux.
 
 Après une mise à jour de l'APK qui change un homebrew, retélécharger son
 fichier : Odin vérifie que les EPROM sont celles que sa liste attend.
@@ -155,7 +185,7 @@ python3 build.py --games chemin/vers/odin-games.json   # ajoute aussi les jeux �
 
 Chaque jeu est un dossier avec un `game.json` (son nom de jeu à la MAME et son
 titre) : `nova-siege/` donne `build/odinhb.zip`, `shard-storm/` donne
-`build/odinshrd.zip`. Un zip contient les deux EPROM du jeu (`<nom>.ic29` et
+`build/odinshrd.zip`, `volt-viper/` donne `build/odinvipr.zip`. Un zip contient les deux EPROM du jeu (`<nom>.ic29` et
 `<nom>.ic30`) et se met dans le dossier des ROM d'Odin, à côté de
 `hikaru.zip` et `mie.zip`.
 

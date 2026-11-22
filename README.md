@@ -38,6 +38,7 @@ Captures d'un Snapdragon 8 Gen 2.</em></p>
 | Ajouter des jeux | MENU → File → Add games… : le sélecteur du téléphone, chaque archive copiée dans `Odin/roms` sous le bon nom (reconnue à son contenu) |
 | **NOVA SIEGE** (homebrew du dépôt) | jeu de tir original pour la Hikaru : son, musique, record gardé, vagues variées, vaisseau-mère ; [odinhb.zip](https://github.com/Laurent-67370/odin-android/releases/download/odin-apk/odinhb.zip) dans `Odin/roms` |
 | **SHARD STORM** (homebrew du dépôt) | casse-briques original : 12 niveaux, capsules, musique, record gardé ; [odinshrd.zip](https://github.com/Laurent-67370/odin-android/releases/download/odin-apk/odinshrd.zip) dans `Odin/roms` |
+| **VOLT VIPER** (homebrew du dépôt) | serpent original : 8 niveaux de murs, étincelles, musique, record gardé ; [odinvipr.zip](https://github.com/Laurent-67370/odin-android/releases/download/odin-apk/odinvipr.zip) dans `Odin/roms` |
 
 Connu, venant d'Odin lui-même : Air Trix peut planter à l'écran des meilleurs
 scores ([Tovarichtch/Odin#52](https://github.com/Tovarichtch/Odin/issues/52)).
@@ -72,9 +73,12 @@ pour construire et un iPhone pour tester.
    Drive, une carte SD…). Chaque archive est copiée dans `Odin/roms` sous le nom
    du jeu qu'elle contient, reconnu au contenu (CRC) : `braveff (1).zip` devient
    `braveff.zip`, et une nouvelle version remplace l'ancienne. La liste des jeux
-   se met à jour aussitôt ; un message dit ce qui a été ajouté et ce qui n'est
-   pas un jeu connu d'Odin. Copier les archives à la main dans `Odin/roms`
-   marche toujours.
+   se met à jour aussitôt. Chaque archive est ensuite vérifiée comme avant le
+   lancement d'un jeu, et un message le dit : « Shard Storm ready to play »,
+   « needs hikaru.zip, mie.zip » (le BIOS manque), « files missing or of
+   another version: odinhb.ic29 » (une ancienne version), pour un BIOS les jeux
+   qu'il rend jouables, et ce qui n'est pas un jeu connu d'Odin. Copier les
+   archives à la main dans `Odin/roms` marche toujours.
 
 Il faut un téléphone ARM64. Odin dessine par défaut avec **Vulkan** (conseillé) ;
 OpenGL ES 3.2 reste au choix, page Display (option « API »). L'émulation
@@ -212,7 +216,7 @@ par seconde** en course : la carte graphique travaille environ 9 ms sur les
 
 ## Homebrew
 
-Le dossier [`homebrew/`](homebrew/) contient deux jeux faits maison pour la
+Le dossier [`homebrew/`](homebrew/) contient trois jeux faits maison pour la
 borne SEGA Hikaru : ils démarrent par le BIOS SEGA comme de vrais jeux,
 affichent par la couche 2D, lisent les commandes par le JVS et jouent leur son
 sur l'AICA. **SHARD STORM** est un casse-briques original : douze niveaux de
