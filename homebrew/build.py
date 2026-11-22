@@ -224,6 +224,10 @@ def entry_of(chips, names, name, title, aim=False):
     }
 
 
+# Where the zips are published, with the APK
+RELEASE = 'https://github.com/Laurent-67370/odin-android/releases/download/odin-apk/'
+
+
 def build(game, flags, games_json):
     about = json.load(open(os.path.join(game, 'game.json')))
     name, title = about['name'], about['title']
@@ -244,6 +248,8 @@ def build(game, flags, games_json):
         games['roms'] = [g for g in games['roms'] if g['name'] != name] + [entry]
         json.dump(games, open(games_json, 'w'), indent=1)
     print('%s (%s): program %d bytes, build/%s.zip' % (name, title, len(program), name))
+    return {'name': name, 'title': title, 'genre': about.get('genre', ''), 'crc': '%08x' % zlib.crc32(chips[0]),
+            'url': RELEASE + name + '.zip'}
 
 
 def main():
@@ -257,8 +263,11 @@ def main():
     folders = args.game or sorted(d for d in os.listdir(HERE) if os.path.isfile(os.path.join(HERE, d, 'game.json')))
     flags = (['-DSTART_WAVE=%d' % args.start_wave] if args.start_wave else []) + ['-D' + d for d in args.define]
     os.makedirs(OUT, exist_ok=True)
-    for folder in folders:
-        build(os.path.join(HERE, folder), flags, args.games)
+    built = [build(os.path.join(HERE, folder), flags, args.games) for folder in folders]
+    # The list Odin's "Get homebrew games" reads (OdinActivity), published
+    # with the zips: written when every game is built
+    if not args.game:
+        json.dump({'games': built}, open(os.path.join(OUT, 'homebrew.json'), 'w'), indent=1)
 
 
 if __name__ == '__main__':
