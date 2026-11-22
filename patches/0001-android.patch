@@ -4011,7 +4011,7 @@ index d908c1f..4db9e13 100644
  	const MenuPalette *m_palette = &RUNASTEINN;
  	/* The frame the gamepad moves on the page */
 diff --git a/src/odin/host/ui/menu_bar.cpp b/src/odin/host/ui/menu_bar.cpp
-index 0282be6..1931472 100644
+index 0282be6..6765a12 100644
 --- a/src/odin/host/ui/menu_bar.cpp
 +++ b/src/odin/host/ui/menu_bar.cpp
 @@ -45,6 +45,7 @@
@@ -4022,7 +4022,26 @@ index 0282be6..1931472 100644
  #include "odin/host/app/version.hpp"
  #include "odin/machine/cabinet/netbd_ring.hpp"
  
-@@ -129,6 +130,7 @@ Menu::build_bar(BarState &state)
+@@ -59,10 +60,17 @@ constexpr float SLIDER_W = 150.0f;
+  * items of a menu; the cut of the corners of a menu; the line of the
+  * accent under the menu open */
+ constexpr float NAME_WIDE = 7.0f;
+-constexpr float NAME_HIGH = 5.0f;
+ constexpr float NAME_GAP = 10.0f;
++#if defined(__ANDROID__)
++/* A finger, not a mouse: the bar and the lines of its menus further apart */
++constexpr float NAME_HIGH = 10.0f;
++constexpr float ITEMS_INSIDE = 9.0f;
++constexpr float ITEM_HIGH = 15.0f;
++#else
++constexpr float NAME_HIGH = 5.0f;
+ constexpr float ITEMS_INSIDE = 5.0f;
+ constexpr float ITEM_HIGH = 3.0f;
++#endif
+ constexpr float MENU_CUT = 6.0f;
+ constexpr float ACCENT = 2.0f;
+ /* The bar lets the game show through, a little */
+@@ -129,6 +137,7 @@ Menu::build_bar(BarState &state)
  {
  	begin_frame(state.theme);
  	bar(state);
@@ -4030,7 +4049,7 @@ index 0282be6..1931472 100644
  	ImGui::Render();
  }
  
-@@ -156,6 +158,7 @@ Menu::build_note(BarState &state)
+@@ -156,6 +165,7 @@ Menu::build_note(BarState &state)
  	ImGui::NewFrame();
  	close_bar_menus();
  	note(state, MenuKit(*m_palette, m_scale));
@@ -4038,7 +4057,7 @@ index 0282be6..1931472 100644
  	ImGui::Render();
  }
  
-@@ -333,8 +336,17 @@ Menu::bar_file(BarItems &b)
+@@ -333,8 +343,17 @@ Menu::bar_file(BarItems &b)
  {
  	BarState &state = b.state;
  
@@ -4056,6 +4075,33 @@ index 0282be6..1931472 100644
  	if (item("Close game", b.key(Action::CLOSE_GAME), false, state.game))
  		b.ask(Ask::CLOSE);
  	if (item("Reset", b.key(Action::RESET), false, state.game))
+diff --git a/src/odin/host/ui/menu_kit.cpp b/src/odin/host/ui/menu_kit.cpp
+index 680fc66..ecf8b5b 100644
+--- a/src/odin/host/ui/menu_kit.cpp
++++ b/src/odin/host/ui/menu_kit.cpp
+@@ -41,12 +41,20 @@ namespace {
+  * control and in a button, in points */
+ constexpr float GROUP_CUT = 5.0f;
+ constexpr float CONTROL_CUT = 3.0f;
+-constexpr float ROW_PAD = 8.0f;
+ constexpr float GAP = 14.0f;
+ constexpr float CELL_WIDE = 7.0f;
+-constexpr float CELL_HIGH = 3.0f;
+ constexpr float BUTTON_WIDE = 8.0f;
++#if defined(__ANDROID__)
++/* A finger, not a mouse: the rows of the pages, the lines of a list and the
++ * buttons taller */
++constexpr float ROW_PAD = 13.0f;
++constexpr float CELL_HIGH = 9.0f;
++constexpr float BUTTON_HIGH = 8.0f;
++#else
++constexpr float ROW_PAD = 8.0f;
++constexpr float CELL_HIGH = 3.0f;
+ constexpr float BUTTON_HIGH = 4.0f;
++#endif
+ /* The texts of a row have that room at the least beside its control, else
+  * the control goes under them */
+ constexpr float TEXT_LEAST = 120.0f;
 diff --git a/src/odin/host/ui/menu_library.cpp b/src/odin/host/ui/menu_library.cpp
 index 3f7b4e4..1571773 100644
 --- a/src/odin/host/ui/menu_library.cpp
