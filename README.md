@@ -72,9 +72,12 @@ pour construire et un iPhone pour tester.
    Drive, une carte SD…). Chaque archive est copiée dans `Odin/roms` sous le nom
    du jeu qu'elle contient, reconnu au contenu (CRC) : `braveff (1).zip` devient
    `braveff.zip`, et une nouvelle version remplace l'ancienne. La liste des jeux
-   se met à jour aussitôt ; un message dit ce qui a été ajouté et ce qui n'est
-   pas un jeu connu d'Odin. Copier les archives à la main dans `Odin/roms`
-   marche toujours.
+   se met à jour aussitôt. Chaque archive est ensuite vérifiée comme avant le
+   lancement d'un jeu, et un message le dit : « Shard Storm ready to play »,
+   « needs hikaru.zip, mie.zip » (le BIOS manque), « files missing or of
+   another version: odinhb.ic29 » (une ancienne version), pour un BIOS les jeux
+   qu'il rend jouables, et ce qui n'est pas un jeu connu d'Odin. Copier les
+   archives à la main dans `Odin/roms` marche toujours.
 
 Il faut un téléphone ARM64. Odin dessine par défaut avec **Vulkan** (conseillé) ;
 OpenGL ES 3.2 reste au choix, page Display (option « API »). L'émulation

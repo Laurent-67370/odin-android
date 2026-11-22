@@ -163,22 +163,40 @@ index 93ce8f8..27c48a2 100644
  				{ "name" : "DOWN", "id" : "down", "switch" : "1P DOWN", "role" : "button6", "keys" : [ "Down" ] },
  				{ "name" : "YAW", "id" : "yaw", "analog" : 0, "low" : "left", "role" : "stick_x" },
 diff --git a/src/odin/host/app/games.cpp b/src/odin/host/app/games.cpp
-index 4482739..9a6c7df 100644
+index 4482739..ee37638 100644
 --- a/src/odin/host/app/games.cpp
 +++ b/src/odin/host/app/games.cpp
-@@ -25,6 +25,8 @@
- #include "odin/host/app/games.hpp"
- 
- #include <algorithm>
-+#include <map>
-+#include <set>
- #include <cstdio>
+@@ -29,6 +29,8 @@
  #include <cstdlib>
  #include <cstring>
-@@ -1277,6 +1279,42 @@ GameList::missing(RomFiles &files, const std::string &name) const
+ #include <initializer_list>
++#include <map>
++#include <set>
+ #include <utility>
+ 
+ #include <jansson.h>
+@@ -1277,6 +1279,49 @@ GameList::missing(RomFiles &files, const std::string &name) const
  	return out;
  }
  
++std::vector<RomFiles::File>
++GameList::files_of(const std::string &name) const
++{
++	const json_t *const rom = find(name);
++	const json_t *const sections = json_object_get(rom, "sections");
++	const char *const parent = json_string_value(json_object_get(rom, "parent"));
++	std::vector<RomFiles::File> out;
++
++	for (size_t i = 0; i < json_array_size(sections); i++) {
++		const json_t *const data = json_object_get(json_array_get(sections, i), "data");
++
++		for (size_t j = 0; j < json_array_size(data); j++)
++			if (const std::optional<RomFiles::File> file = file_of(json_array_get(data, j), parent ? parent : ""))
++				out.push_back(*file);
++	}
++	return out;
++}
++
 +std::string
 +GameList::set_holding(const std::vector<uint32_t> &crcs) const
 +{
@@ -186,22 +204,11 @@ index 4482739..9a6c7df 100644
 +	std::set<std::string> versions;
 +
 +	for (const Entry &entry : entries()) {
-+		const json_t *const rom = find(entry.name);
-+		const json_t *const sections = json_object_get(rom, "sections");
-+		const char *const parent = json_string_value(json_object_get(rom, "parent"));
-+
-+		if (parent)
++		if (!entry.parent.empty())
 +			versions.insert(entry.name);
-+		for (size_t i = 0; i < json_array_size(sections); i++) {
-+			const json_t *const data = json_object_get(json_array_get(sections, i), "data");
-+
-+			for (size_t j = 0; j < json_array_size(data); j++) {
-+				const std::optional<RomFiles::File> file = file_of(json_array_get(data, j), parent ? parent : "");
-+
-+				if (file && file->crc && std::find(crcs.begin(), crcs.end(), *file->crc) != crcs.end())
-+					held[file->set_of(entry.name)].insert(*file->crc);
-+			}
-+		}
++		for (const RomFiles::File &file : files_of(entry.name))
++			if (file.crc && std::find(crcs.begin(), crcs.end(), *file.crc) != crcs.end())
++				held[file.set_of(entry.name)].insert(*file.crc);
 +	}
 +
 +	std::string best;
@@ -219,10 +226,10 @@ index 4482739..9a6c7df 100644
  GameList::load_game(RomFiles &files, const std::string &name) const
  {
 diff --git a/src/odin/host/app/games.hpp b/src/odin/host/app/games.hpp
-index 72cd8ab..354be55 100644
+index 72cd8ab..dce4d7a 100644
 --- a/src/odin/host/app/games.hpp
 +++ b/src/odin/host/app/games.hpp
-@@ -438,6 +438,10 @@ public:
+@@ -438,6 +438,12 @@ public:
  	 * alternative, all those of the other sections, but those of a
  	 * section it runs without */
  	std::vector<RomFiles::File> missing(RomFiles &files, const std::string &name) const;
@@ -230,15 +237,17 @@ index 72cd8ab..354be55 100644
 +	 * are; the parent of a version rather than the version; empty when
 +	 * none is */
 +	std::string set_holding(const std::vector<uint32_t> &crcs) const;
++	/* Every file the game is made of, optional ones too */
++	std::vector<RomFiles::File> files_of(const std::string &name) const;
  	/* The game with its files. Nothing when the game is not in the list, a
  	 * file is missing or has another size than the list tells. */
  	std::optional<Game> load_game(RomFiles &files, const std::string &name) const;
 diff --git a/src/odin/host/app/import_games.cpp b/src/odin/host/app/import_games.cpp
 new file mode 100644
-index 0000000..aa670c1
+index 0000000..1e07812
 --- /dev/null
 +++ b/src/odin/host/app/import_games.cpp
-@@ -0,0 +1,215 @@
+@@ -0,0 +1,278 @@
 +/*
 + *  ██████╗ ██████╗ ██╗███╗   ██╗
 + * ██╔═══██╗██╔══██╗██║████╗  ██║
@@ -362,6 +371,69 @@ index 0000000..aa670c1
 +	return ok;
 +}
 +
++/* "a, b, c" of the names, the first `most` and how many more */
++std::string
++listed(const std::vector<std::string> &names, size_t most = 4)
++{
++	std::string out;
++
++	for (size_t i = 0; i < names.size() && i < most; i++)
++		out += (out.empty() ? "" : ", ") + (names[i].empty() ? std::string("?") : names[i]);
++	if (names.size() > most)
++		out += " and " + std::to_string(names.size() - most) + " more";
++	return out;
++}
++
++/* What an archive added makes of its game, as the game is checked before
++ * it starts: ready, the archives it still lacks, or the files of its own
++ * that are not the list's (another version, or missing); for a set no game
++ * is named after (a BIOS), the games it makes ready */
++std::string
++status_of(const std::string &set, const std::string &roms, const std::string &bios, const GameList &games)
++{
++	RomFiles files(roms, bios);
++	std::string title;
++
++	for (const auto &[game, name] : games.titles())
++		if (game == set)
++			title = name;
++	if (title.empty()) {
++		std::vector<std::string> ready;
++
++		for (const GameList::Entry &entry : games.entries()) {
++			bool uses = false;
++
++			for (const RomFiles::File &file : games.files_of(entry.name))
++				uses = uses || file.set_of(entry.name) == set;
++			if (uses && games.missing(files, entry.name).empty())
++				ready.push_back(entry.title);
++		}
++		return ready.empty() ? "a BIOS, no game ready with it yet" : "a BIOS, games ready: " + listed(ready);
++	}
++
++	std::vector<std::string> lacking, other;
++
++	for (const RomFiles::File &file : games.missing(files, set)) {
++		const std::string archive = file.set_of(set) + ".zip";
++
++		if (!files.set_there(set, file)) {
++			if (std::find(lacking.begin(), lacking.end(), archive) == lacking.end())
++				lacking.push_back(archive);
++		} else {
++			other.push_back(file.name);
++		}
++	}
++	if (lacking.empty() && other.empty())
++		return title + " ready to play";
++	std::string out = title;
++
++	if (!lacking.empty())
++		out += ", needs " + listed(lacking);
++	if (!other.empty())
++		out += (lacking.empty() ? ", " : "; ") + std::string("files missing or of another version: ") + listed(other);
++	return out;
++}
++
 +} /* namespace */
 +
 +bool
@@ -371,10 +443,11 @@ index 0000000..aa670c1
 +}
 +
 +unsigned
-+import_games(const std::string &answer, const std::string &roms, const GameList &games, std::string &note)
++import_games(const std::string &answer, const std::string &roms, const std::string &bios,
++             const GameList &games, std::string &note)
 +{
 +	std::error_code error;
-+	std::vector<std::string> added, refused;
++	std::vector<std::string> added, kinds, refused;
 +
 +	std::filesystem::create_directories(roms, error);
 +	for (const std::string &address : lines_of(answer)) {
@@ -435,19 +508,18 @@ index 0000000..aa670c1
 +			continue;
 +		}
 +		std::printf("import: '%s' as '%s'\n", address.c_str(), to.string().c_str());
-+		added.push_back(set + kind);
++		added.push_back(set);
++		kinds.push_back(kind);
 +	}
 +
-+	const auto listed = [](const std::vector<std::string> &names) {
-+		std::string out;
-+
-+		for (const std::string &name : names)
-+			out += (out.empty() ? "" : ", ") + (name.empty() ? std::string("?") : name);
-+		return out;
-+	};
++	/* Checked once all are there: a game and its BIOS chosen together */
 +	note.clear();
-+	if (!added.empty())
-+		note = "Added to " + roms + ": " + listed(added);
++	for (size_t i = 0; i < added.size(); i++) {
++		const std::string status = status_of(added[i], roms, bios, games);
++
++		std::printf("import: %s%s: %s\n", added[i].c_str(), kinds[i].c_str(), status.c_str());
++		note += (note.empty() ? "" : ". ") + added[i] + kinds[i] + ": " + status;
++	}
 +	if (!refused.empty())
 +		note += (note.empty() ? "" : ". ") + std::string("Not a game Odin knows: ") + listed(refused);
 +	return static_cast<unsigned>(added.size());
@@ -456,10 +528,10 @@ index 0000000..aa670c1
 +} /* namespace odin */
 diff --git a/src/odin/host/app/import_games.hpp b/src/odin/host/app/import_games.hpp
 new file mode 100644
-index 0000000..ade56bd
+index 0000000..b3ad9a3
 --- /dev/null
 +++ b/src/odin/host/app/import_games.hpp
-@@ -0,0 +1,50 @@
+@@ -0,0 +1,54 @@
 +/*
 + *  ██████╗ ██████╗ ██╗███╗   ██╗
 + * ██╔═══██╗██╔══██╗██║████╗  ██║
@@ -503,15 +575,19 @@ index 0000000..ade56bd
 +
 +/* Each archive of the answer copied to `roms` as <set>.zip (or .7z), the
 + * set told by the CRCs of its files, else by the name it had when that is
-+ * a set's; the one there before replaced. `note` says what was added and
-+ * what was not. The number of archives added. */
-+unsigned import_games(const std::string &answer, const std::string &roms, const GameList &games, std::string &note);
++ * a set's; the one there before replaced. Then each is checked as a game is
++ * before it starts (the files of the BIOS in `bios` too): `note` says, for
++ * each, whether its game is ready or what it lacks (another archive, files
++ * of another version), for a BIOS the games it makes ready, and what is no
++ * game Odin knows. The number of archives added. */
++unsigned import_games(const std::string &answer, const std::string &roms, const std::string &bios,
++                     const GameList &games, std::string &note);
 +
 +} /* namespace odin */
 +
 +#endif /* ODIN_IMPORT_GAMES_HPP */
 diff --git a/src/odin/host/app/library.cpp b/src/odin/host/app/library.cpp
-index 9d6ca81..5d86d98 100644
+index 9d6ca81..4a6d6d1 100644
 --- a/src/odin/host/app/library.cpp
 +++ b/src/odin/host/app/library.cpp
 @@ -29,6 +29,7 @@
@@ -529,7 +605,7 @@ index 9d6ca81..5d86d98 100644
 +#if defined(__ANDROID__)
 +					/* Archives added to the games: the library looks again */
 +					if (imports_games(archive->folder)) {
-+						import_games(archive->folder, options.rom_path, games, note);
++						import_games(archive->folder, options.rom_path, options.bios_path, games, note);
 +						say(note);
 +						scan_library(state, games, options, chosen());
 +						library_pictures(display, state, options.artwork);
@@ -689,7 +765,7 @@ index 31918b5..3ac4953 100644
  #else
  inline constexpr DisplayApi API = DisplayApi::OPENGL;
 diff --git a/src/odin/host/app/session.cpp b/src/odin/host/app/session.cpp
-index 094c084..601cd49 100644
+index 094c084..250a6d4 100644
 --- a/src/odin/host/app/session.cpp
 +++ b/src/odin/host/app/session.cpp
 @@ -26,6 +26,8 @@
@@ -719,7 +795,7 @@ index 094c084..601cd49 100644
 +#if defined(__ANDROID__)
 +		/* Archives added to the games, for the library */
 +		if (imports_games(archive->folder)) {
-+			import_games(archive->folder, m_options.rom_path, m_games, note);
++			import_games(archive->folder, m_options.rom_path, m_options.bios_path, m_games, note);
 +			say(note);
 +			return;
 +		}
