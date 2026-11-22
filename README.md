@@ -37,6 +37,7 @@ Captures d'un Snapdragon 8 Gen 2.</em></p>
 | Mises à jour | par-dessus l'ancienne version (APK signé d'une clé fixe) |
 | Ajouter des jeux | MENU → File → Add games… : le sélecteur du téléphone, plusieurs fichiers à la fois ; chaque archive copiée dans `Odin/roms` sous le bon nom (reconnue à son contenu), puis vérifiée : « ready to play », BIOS manquant, ancienne version. Essayé sur le téléphone |
 | Jeux maison sans nouvel APK | leur zip porte leur description : l'import seul les ajoute à la liste (essayé sur le téléphone avec GLOWBUG GARDEN) |
+| Télécharger les jeux maison | MENU → File → Get homebrew games… : la liste des jeux maison publiés, chacun « new », « installed » ou « update » ; ceux cochés sont téléchargés puis ajoutés comme par l'import |
 | **NOVA SIEGE** (homebrew du dépôt) | jeu de tir original : son, musique, record gardé, vagues variées, vaisseau-mère ; [odinhb.zip](https://github.com/Laurent-67370/odin-android/releases/download/odin-apk/odinhb.zip) |
 | **SHARD STORM** (homebrew du dépôt) | casse-briques original : 12 niveaux, capsules, raquette au doigt, musique, record gardé ; [odinshrd.zip](https://github.com/Laurent-67370/odin-android/releases/download/odin-apk/odinshrd.zip) |
 | **VOLT VIPER** (homebrew du dépôt) | serpent original : 8 niveaux de murs, étincelles, musique, record gardé ; [odinvipr.zip](https://github.com/Laurent-67370/odin-android/releases/download/odin-apk/odinvipr.zip) |
@@ -237,8 +238,10 @@ sur l'AICA. Tous originaux, avec leur musique composée et leur record gardé.
 | **VOLT VIPER** | serpent : cellules d'énergie, étincelles, 8 niveaux de murs | [odinvipr.zip](https://github.com/Laurent-67370/odin-android/releases/download/odin-apk/odinvipr.zip) |
 | **GLOWBUG GARDEN** | poursuite dans un labyrinthe : une luciole, trois scarabées d'ombre, la fleur-lanterne, 4 jardins | [odinglow.zip](https://github.com/Laurent-67370/odin-android/releases/download/odin-apk/odinglow.zip) |
 
-Pour y jouer sur le téléphone : télécharger le zip, puis **MENU → File → Add
-games…** dans Odin (il demande aussi `hikaru.zip` et `mie.zip`, le BIOS). Le
+Pour y jouer sur le téléphone : **MENU → File → Get homebrew games…** dans
+Odin les liste, dit lesquels sont nouveaux ou ont une mise à jour, et installe
+ceux qu'on coche. Ou bien : télécharger le zip, puis **MENU → File → Add
+games…** (il demande aussi `hikaru.zip` et `mie.zip`, le BIOS). Le
 zip porte la description du jeu : un nouveau jeu maison, ou une nouvelle
 version, s'installe sans nouvel APK. Les commandes répondent une dizaine de
 secondes après le lancement (l'écran l'indique). Le détail de chaque jeu, et

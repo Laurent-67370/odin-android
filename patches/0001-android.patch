@@ -365,10 +365,10 @@ index 72cd8ab..7f53f6c 100644
  	std::optional<Game> load_game(RomFiles &files, const std::string &name) const;
 diff --git a/src/odin/host/app/import_games.cpp b/src/odin/host/app/import_games.cpp
 new file mode 100644
-index 0000000..397c64a
+index 0000000..84c55d2
 --- /dev/null
 +++ b/src/odin/host/app/import_games.cpp
-@@ -0,0 +1,353 @@
+@@ -0,0 +1,358 @@
 +/*
 + *  ██████╗ ██████╗ ██╗███╗   ██╗
 + * ██╔═══██╗██╔══██╗██║████╗  ██║
@@ -467,11 +467,13 @@ index 0000000..397c64a
 +	return name;
 +}
 +
-+/* The archive at the address copied to `path` whole */
++/* The archive at the address (content://, or file:// for one downloaded)
++ * copied to `path` whole */
 +bool
 +copy_to(const std::string &address, const std::string &path)
 +{
-+	SDL_IOStream *const in = SDL_IOFromFile(address.c_str(), "rb");
++	const std::string from = address.rfind("file://", 0) == 0 ? address.substr(7) : address;
++	SDL_IOStream *const in = SDL_IOFromFile(from.c_str(), "rb");
 +
 +	if (!in)
 +		return false;
@@ -631,7 +633,7 @@ index 0000000..397c64a
 +bool
 +imports_games(const std::string &answer)
 +{
-+	return answer.rfind("content://", 0) == 0;
++	return answer.rfind("content://", 0) == 0 || answer.rfind("file://", 0) == 0;
 +}
 +
 +unsigned
@@ -704,6 +706,9 @@ index 0000000..397c64a
 +			continue;
 +		}
 +		std::printf("import: '%s' as '%s'\n", address.c_str(), to.string().c_str());
++		/* A download, in the activity's cache: done with */
++		if (address.rfind("file://", 0) == 0)
++			std::filesystem::remove(address.substr(7), error);
 +		added.push_back(set);
 +		kinds.push_back(kind);
 +	}
@@ -724,7 +729,7 @@ index 0000000..397c64a
 +} /* namespace odin */
 diff --git a/src/odin/host/app/import_games.hpp b/src/odin/host/app/import_games.hpp
 new file mode 100644
-index 0000000..1e97900
+index 0000000..5c437f3
 --- /dev/null
 +++ b/src/odin/host/app/import_games.hpp
 @@ -0,0 +1,60 @@
@@ -765,8 +770,8 @@ index 0000000..1e97900
 + * games, each under the name of the set it holds: on Android the picker
 + * answers with content:// addresses, not paths */
 +
-+/* Whether a picker's answer is archives to import (content:// addresses,
-+ * one a line) */
++/* Whether a picker's answer is archives to import (content:// addresses, or
++ * file:// for downloads, one a line) */
 +bool imports_games(const std::string &answer);
 +
 +/* Each archive of the answer copied to `roms` as <set>.zip (or .7z), the
@@ -789,7 +794,7 @@ index 0000000..1e97900
 +
 +#endif /* ODIN_IMPORT_GAMES_HPP */
 diff --git a/src/odin/host/app/library.cpp b/src/odin/host/app/library.cpp
-index 9d6ca81..9c92030 100644
+index 9d6ca81..5e33076 100644
 --- a/src/odin/host/app/library.cpp
 +++ b/src/odin/host/app/library.cpp
 @@ -29,6 +29,7 @@
@@ -809,12 +814,16 @@ index 9d6ca81..9c92030 100644
          Display &display, Keyboard &keys, Pointers *pointers, const std::string &last, const std::string &failed)
  {
  	using Ask = BarState::Ask;
-@@ -200,6 +201,16 @@ library(const Options &command, const GameList &games, Settings &settings, const
+@@ -200,6 +201,20 @@ library(const Options &command, const GameList &games, Settings &settings, const
  				std::string note;
  
  				if (const std::optional<FolderDialog::Answer> archive = menus.take_folder()) {
 +#if defined(__ANDROID__)
 +					/* Archives added to the games: the library looks again */
++					if (!archive->error.empty() && archive->folder.empty()) {
++						say(archive->error);
++						continue;
++					}
 +					if (imports_games(archive->folder)) {
 +						import_games(archive->folder, options.rom_path, options.bios_path, games, note);
 +						say(note);
@@ -1017,7 +1026,7 @@ index 31918b5..3ac4953 100644
  #else
  inline constexpr DisplayApi API = DisplayApi::OPENGL;
 diff --git a/src/odin/host/app/session.cpp b/src/odin/host/app/session.cpp
-index 094c084..250a6d4 100644
+index 094c084..3a2103b 100644
 --- a/src/odin/host/app/session.cpp
 +++ b/src/odin/host/app/session.cpp
 @@ -26,6 +26,8 @@
@@ -1040,12 +1049,16 @@ index 094c084..250a6d4 100644
  		if (event.type == m_menus.picker_event()) {
  			take_folder();
  			continue;
-@@ -380,6 +386,14 @@ Session::take_folder()
+@@ -380,6 +386,18 @@ Session::take_folder()
  	std::string note;
  
  	if (const std::optional<FolderDialog::Answer> archive = m_menus.take_folder()) {
 +#if defined(__ANDROID__)
 +		/* Archives added to the games, for the library */
++		if (!archive->error.empty() && archive->folder.empty()) {
++			say(archive->error);
++			return;
++		}
 +		if (imports_games(archive->folder)) {
 +			import_games(archive->folder, m_options.rom_path, m_options.bios_path, m_games, note);
 +			say(note);
@@ -1055,7 +1068,7 @@ index 094c084..250a6d4 100644
  		if (const std::optional<Opened> opened = open_archive(*archive, m_games, note)) {
  			m_opened = *opened;
  			m_end = Ended::OPENED;
-@@ -481,7 +495,7 @@ Session::frames()
+@@ -481,7 +499,7 @@ Session::frames()
  			m_audio->play(m_board.sound(false), m_board.sound(true));
  
  		/* The bar, or a note alone, over the frame */
@@ -3631,10 +3644,26 @@ index 2d4b1b2..418c619 100644
  		return 0;
  	const VkCommandBuffer cb = m_card.commands();
 diff --git a/src/odin/host/ui/folder_dialog.cpp b/src/odin/host/ui/folder_dialog.cpp
-index b1bc982..27ddca8 100644
+index b1bc982..a96e26d 100644
 --- a/src/odin/host/ui/folder_dialog.cpp
 +++ b/src/odin/host/ui/folder_dialog.cpp
-@@ -48,7 +48,7 @@ struct Asked {
+@@ -24,7 +24,15 @@
+ 
+ #include "odin/host/ui/folder_dialog.hpp"
+ 
++#if defined(__ANDROID__)
++#include <SDL3/SDL_system.h>
++#include <jni.h>
++#endif
++
++#include <cstring>
+ #include <filesystem>
++#include <string>
++#include <vector>
+ #include <mutex>
+ #include <system_error>
+ #include <utility>
+@@ -48,7 +56,7 @@ struct Asked {
  };
  
  /* Read by the picker until it answers */
@@ -3643,11 +3672,15 @@ index b1bc982..27ddca8 100644
  
  /* Where the picker opens: the folder when it is there */
  const char *
-@@ -81,6 +81,31 @@ answered(void *userdata, const char *const *files, int)
+@@ -81,6 +89,35 @@ answered(void *userdata, const char *const *files, int)
  	SDL_PushEvent(&event);
  }
  
 +#if defined(__ANDROID__)
++/* The homebrew games asked of the activity, until it answers */
++std::mutex g_homebrew_mutex;
++Asked *g_homebrew = nullptr;
++
 +/* Every file chosen, one a line (content:// addresses) */
 +void SDLCALL
 +answered_all(void *userdata, const char *const *files, int)
@@ -3675,7 +3708,7 @@ index b1bc982..27ddca8 100644
  } /* namespace */
  
  FolderDialog::FolderDialog() : m_slot(std::make_shared<Slot>())
-@@ -100,6 +125,36 @@ FolderDialog::start()
+@@ -100,6 +137,76 @@ FolderDialog::start()
  	return true;
  }
  
@@ -3698,6 +3731,37 @@ index b1bc982..27ddca8 100644
 +	answered(new Asked{ m_slot, asked }, files, 0);
 +}
 +
++void
++FolderDialog::ask_homebrew(int asked)
++{
++	if (!start())
++		return;
++
++	JNIEnv *const env = static_cast<JNIEnv *>(SDL_GetAndroidJNIEnv());
++	const jobject activity = static_cast<jobject>(SDL_GetAndroidActivity());
++	const jclass of = activity ? env->GetObjectClass(activity) : nullptr;
++	const jmethodID method = of ? env->GetMethodID(of, "askHomebrew", "()V") : nullptr;
++
++	{
++		const std::lock_guard<std::mutex> lock(g_homebrew_mutex);
++		delete g_homebrew;
++		g_homebrew = new Asked{ m_slot, asked };
++	}
++	if (method) {
++		env->CallVoidMethod(activity, method);
++	} else {
++		if (env->ExceptionCheck())
++			env->ExceptionClear();
++		SDL_SetError("the activity cannot list the homebrew games");
++		const std::lock_guard<std::mutex> lock(g_homebrew_mutex);
++		answered_all(std::exchange(g_homebrew, nullptr), nullptr, 0);
++	}
++	if (of)
++		env->DeleteLocalRef(of);
++	if (activity)
++		env->DeleteLocalRef(activity);
++}
++
 +/* The archives to add to the games: the picker of the system, several at
 + * once, any file (the kind of a 7z is not known to every phone); what was
 + * chosen is copied to Odin/roms (import_games) */
@@ -3709,10 +3773,19 @@ index b1bc982..27ddca8 100644
 +		SDL_ShowOpenFileDialog(answered_all, new Asked{ m_slot, asked }, window, nullptr, 0, nullptr, true);
 +}
 +#else
++void
++FolderDialog::ask_homebrew(int asked)
++{
++	if (!start())
++		return;
++	SDL_SetError("the homebrew games are listed on Android only");
++	answered(new Asked{ m_slot, asked }, nullptr, 0);
++}
++
  void
  FolderDialog::ask(SDL_Window *window, const std::string &from, int asked)
  {
-@@ -113,6 +168,7 @@ FolderDialog::ask_archive(SDL_Window *window, const std::string &from, int asked
+@@ -113,6 +220,7 @@ FolderDialog::ask_archive(SDL_Window *window, const std::string &from, int asked
  	if (start())
  		SDL_ShowOpenFileDialog(answered, new Asked{ m_slot, asked }, window, ARCHIVES, 1, start_at(from), false);
  }
@@ -3720,6 +3793,64 @@ index b1bc982..27ddca8 100644
  
  bool
  FolderDialog::open() const
+@@ -137,3 +245,41 @@ FolderDialog::answer()
+ }
+ 
+ } /* namespace odin */
++
++#if defined(__ANDROID__)
++/* The activity's answer: the files of the homebrew games it downloaded, one
++ * a line, or nothing (none chosen, or no list: `error` then says why) */
++extern "C" JNIEXPORT void JNICALL
++Java_org_odinport_android_OdinActivity_homebrewChosen(JNIEnv *env, jclass, jstring answer, jstring error)
++{
++	const char *const text = answer ? env->GetStringUTFChars(answer, nullptr) : nullptr;
++	const char *const why = error ? env->GetStringUTFChars(error, nullptr) : nullptr;
++	std::vector<std::string> lines;
++	std::vector<const char *> files;
++
++	for (const char *at = text; at && *at;) {
++		const char *const end = std::strchr(at, '\n');
++		const std::string line = end ? std::string(at, end) : std::string(at);
++
++		if (!line.empty())
++			lines.push_back(line);
++		at = end ? end + 1 : at + line.size();
++	}
++	for (const std::string &line : lines)
++		files.push_back(line.c_str());
++	files.push_back(nullptr);
++	{
++		const std::lock_guard<std::mutex> lock(odin::g_homebrew_mutex);
++
++		if (odin::g_homebrew) {
++			if (why && *why)
++				SDL_SetError("%s", why);
++			odin::answered_all(std::exchange(odin::g_homebrew, nullptr), why && *why ? nullptr : files.data(), 0);
++		}
++	}
++	if (text)
++		env->ReleaseStringUTFChars(answer, text);
++	if (why)
++		env->ReleaseStringUTFChars(error, why);
++}
++#endif
+diff --git a/src/odin/host/ui/folder_dialog.hpp b/src/odin/host/ui/folder_dialog.hpp
+index 01c47b0..ecac89a 100644
+--- a/src/odin/host/ui/folder_dialog.hpp
++++ b/src/odin/host/ui/folder_dialog.hpp
+@@ -53,6 +53,11 @@ public:
+ 	void ask(SDL_Window *window, const std::string &from, int asked);
+ 	/* A zip or a 7z, as MAME keeps a game, the same way */
+ 	void ask_archive(SDL_Window *window, const std::string &from, int asked);
++	/* Android: the homebrew games published with the APK, chosen and
++	 * downloaded by the activity (OdinActivity.askHomebrew); the answer is
++	 * their files (file:// addresses, one a line), as for archives.
++	 * Elsewhere, an answer that there is no such list. */
++	void ask_homebrew(int asked);
+ 	bool open() const;
+ 	/* The event that says the answer has come, and the answer, once */
+ 	Uint32 event() const;
 diff --git a/src/odin/host/ui/menu.cpp b/src/odin/host/ui/menu.cpp
 index 0678015..564e27e 100644
 --- a/src/odin/host/ui/menu.cpp
@@ -3836,7 +3967,7 @@ index 0678015..564e27e 100644
  
  	kit.next_tip("Sharpens distant textures, such as roads and floors (NASCAR, Virtual-On). The cabinet has none.");
 diff --git a/src/odin/host/ui/menu.hpp b/src/odin/host/ui/menu.hpp
-index d908c1f..9122b98 100644
+index d908c1f..4db9e13 100644
 --- a/src/odin/host/ui/menu.hpp
 +++ b/src/odin/host/ui/menu.hpp
 @@ -153,6 +153,7 @@ struct BarSettings {
@@ -3847,7 +3978,17 @@ index d908c1f..9122b98 100644
  	std::string filter, gpu_chosen;
  	std::vector<std::string> gpus;	/* the cards of the computer */
  	/* Only Vulkan can be told which card, with more than one to tell */
-@@ -782,6 +783,9 @@ private:
+@@ -256,7 +257,8 @@ struct BarState : BarSettings {
+ 	 * (PAD, KEYBOARD, GUN, INPUTS_*): the player, the gamepad or joystick
+ 	 * chosen (in pads), the light gun chosen (in guns, -1: none) */
+ 	enum class Ask { NONE, OPEN, CLOSE, RESET, SAVE_STATE, LOAD_STATE, CARD, CARD_CHOOSE, CARD_NEW, SETTINGS, FULLSCREEN,
+-	                 PAUSE, QUIT, PAD, KEYBOARD, GUN, INPUTS_DEFAULTS, INPUTS_CLEAR, INPUTS_UNDO, HOTKEYS_DEFAULTS };
++	                 PAUSE, QUIT, PAD, KEYBOARD, GUN, INPUTS_DEFAULTS, INPUTS_CLEAR, INPUTS_UNDO, HOTKEYS_DEFAULTS,
++	                 HOMEBREW };
+ 	Ask ask = Ask::NONE;
+ 	int page = -1, card_chosen = -1;
+ 	std::string card_name;
+@@ -782,6 +784,9 @@ private:
  	 * pixels a point */
  	ImGuiStyle m_style;
  	float m_scale, m_density = 1.0f;
@@ -3858,7 +3999,7 @@ index d908c1f..9122b98 100644
  	const MenuPalette *m_palette = &RUNASTEINN;
  	/* The frame the gamepad moves on the page */
 diff --git a/src/odin/host/ui/menu_bar.cpp b/src/odin/host/ui/menu_bar.cpp
-index 0282be6..e536e35 100644
+index 0282be6..1931472 100644
 --- a/src/odin/host/ui/menu_bar.cpp
 +++ b/src/odin/host/ui/menu_bar.cpp
 @@ -45,6 +45,7 @@
@@ -3885,7 +4026,7 @@ index 0282be6..e536e35 100644
  	ImGui::Render();
  }
  
-@@ -333,8 +336,14 @@ Menu::bar_file(BarItems &b)
+@@ -333,8 +336,17 @@ Menu::bar_file(BarItems &b)
  {
  	BarState &state = b.state;
  
@@ -3893,6 +4034,9 @@ index 0282be6..e536e35 100644
 +	/* The picker of the phone: the archives copied to Odin/roms */
 +	if (item("Add games..."))
 +		b.ask(Ask::OPEN);
++	/* The homebrew games published with the APK, downloaded and added */
++	if (item("Get homebrew games..."))
++		b.ask(Ask::HOMEBREW);
 +#else
  	if (item("Open game..."))
  		b.ask(Ask::OPEN);
@@ -3901,7 +4045,7 @@ index 0282be6..e536e35 100644
  		b.ask(Ask::CLOSE);
  	if (item("Reset", b.key(Action::RESET), false, state.game))
 diff --git a/src/odin/host/ui/menu_session.cpp b/src/odin/host/ui/menu_session.cpp
-index 430d3ff..7607768 100644
+index 430d3ff..26a3b94 100644
 --- a/src/odin/host/ui/menu_session.cpp
 +++ b/src/odin/host/ui/menu_session.cpp
 @@ -33,6 +33,7 @@
@@ -3921,6 +4065,16 @@ index 430d3ff..7607768 100644
  	state.filter = options.display.filter;
  	state.window = options.display.window ? options.display.window : 1;
  	state.custom_w = options.display.window_w;
+@@ -953,6 +956,9 @@ MenuSession::do_bar(BarState &bar)
+ 	case Ask::OPEN:
+ 		m_dialog.ask_archive(m_display.window(), state.roms, ARCHIVE_ASKED);
+ 		return Ask::NONE;
++	case Ask::HOMEBREW:
++		m_dialog.ask_homebrew(ARCHIVE_ASKED);
++		return Ask::NONE;
+ 	case Ask::FULLSCREEN:
+ 		m_display.toggle_fullscreen();
+ 		return Ask::NONE;
 diff --git a/src/odin/host/ui/menu_session_state.cpp b/src/odin/host/ui/menu_session_state.cpp
 index 27d5173..f2054fb 100644
 --- a/src/odin/host/ui/menu_session_state.cpp
