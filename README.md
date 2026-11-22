@@ -38,6 +38,7 @@ Captures d'un Snapdragon 8 Gen 2.</em></p>
 | Ajouter des jeux | MENU → File → Add games… : le sélecteur du téléphone, chaque archive copiée dans `Odin/roms` sous le bon nom (reconnue à son contenu) |
 | **NOVA SIEGE** (homebrew du dépôt) | jeu de tir original pour la Hikaru : son, musique, record gardé, vagues variées, vaisseau-mère ; [odinhb.zip](https://github.com/Laurent-67370/odin-android/releases/download/odin-apk/odinhb.zip) dans `Odin/roms` |
 | **SHARD STORM** (homebrew du dépôt) | casse-briques original : 12 niveaux, capsules, musique, record gardé ; [odinshrd.zip](https://github.com/Laurent-67370/odin-android/releases/download/odin-apk/odinshrd.zip) dans `Odin/roms` |
+| **GLOWBUG GARDEN** (homebrew du dépôt) | poursuite dans un labyrinthe, originale : une luciole, trois scarabées d'ombre, quatre jardins, musique, record gardé ; [odinglow.zip](https://github.com/Laurent-67370/odin-android/releases/download/odin-apk/odinglow.zip), à importer seul (sans nouvel APK) |
 | **VOLT VIPER** (homebrew du dépôt) | serpent original : 8 niveaux de murs, étincelles, musique, record gardé ; [odinvipr.zip](https://github.com/Laurent-67370/odin-android/releases/download/odin-apk/odinvipr.zip) dans `Odin/roms` |
 
 Connu, venant d'Odin lui-même : Air Trix peut planter à l'écran des meilleurs
@@ -223,7 +224,7 @@ par seconde** en course : la carte graphique travaille environ 9 ms sur les
 
 ## Homebrew
 
-Le dossier [`homebrew/`](homebrew/) contient trois jeux faits maison pour la
+Le dossier [`homebrew/`](homebrew/) contient quatre jeux faits maison pour la
 borne SEGA Hikaru : ils démarrent par le BIOS SEGA comme de vrais jeux,
 affichent par la couche 2D, lisent les commandes par le JVS et jouent leur son
 sur l'AICA. **SHARD STORM** est un casse-briques original : douze niveaux de
