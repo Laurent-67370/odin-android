@@ -69,7 +69,10 @@ compilation pour Android), attend son avis ; le workflow `upstream-check.yml`
 vérifie que chaque branche proposée compile seule pour Android
 ([`upstream/`](upstream/)).
 
-**Et iOS ?** Pas pour l'instant (question posée dans
+**Et iOS ?** Une version expérimentale se construit dans
+[odin-ios](https://github.com/Laurent-67370/odin-ios), à partir du même patch
+(menus, manette tactile, dossiers communs aux deux) : l'app s'ouvre, les jeux
+attendent le JIT. Des bêta-testeurs sont recherchés. Le fond du problème (question posée dans
 [Tovarichtch/Odin#56](https://github.com/Tovarichtch/Odin/issues/56)). Odin n'a
 pas d'interpréteur : il recompile toujours le SH-4 et l'ARM7 en ARM64, donc il
 lui faut un JIT, ce qu'iOS n'accorde qu'à une app installée en sideload avec un
