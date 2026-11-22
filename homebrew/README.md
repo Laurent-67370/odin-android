@@ -2,7 +2,7 @@
 
 Des jeux faits maison qui tournent sur la borne **SEGA Hikaru** telle qu'Odin
 l'émule : de vrais programmes pour son processeur SH-4, lancés par le BIOS
-SEGA comme les jeux d'origine. Trois jeux originaux, qui partagent une même
+SEGA comme les jeux d'origine. Quatre jeux originaux, qui partagent une même
 bibliothèque (`src/`) :
 
 | Jeu | Genre | Fichier |
@@ -10,6 +10,7 @@ bibliothèque (`src/`) :
 | [**NOVA SIEGE**](#nova-siege) | tir à écran fixe | `odinhb.zip` |
 | [**SHARD STORM**](#shard-storm) | casse-briques | `odinshrd.zip` |
 | [**VOLT VIPER**](#volt-viper) | serpent | `odinvipr.zip` |
+| [**GLOWBUG GARDEN**](#glowbug-garden) | poursuite dans un labyrinthe | `odinglow.zip` |
 
 ## NOVA SIEGE
 
@@ -155,21 +156,48 @@ coupe ou remet la musique.
 
 ![La boîte aux quatre portes du niveau 6 et les lacets du niveau 8](docs/viper-levels.png)
 
+## GLOWBUG GARDEN
+
+Une luciole parcourt les allées d'un jardin la nuit et allume chaque **graine
+de lumière**. Trois **scarabées d'ombre** la traquent, chacun à sa façon : le
+rouge va droit sur elle, le vert vise là où elle va, le violet erre et ne
+fonce que s'il est proche. Une **fleur-lanterne** les retourne un moment : ils
+fuient, pâlissent, et la luciole les renvoie à leur terrier (200, 400, 800,
+1600 points à la suite). **Quatre jardins** (la pelouse, les massifs, les
+rangs, le cloître), symétriques et sans cul-de-sac, faits pour le jeu ; puis
+ils recommencent, plus vite.
+
+Trois lucioles, une de plus à 10 000 points puis tous les 15 000. **Son** :
+les graines (deux notes en alternance), la fleur, le scarabée renvoyé, la
+lumière qui s'éteint, les jingles. **Musique** : deux morceaux composés pour le
+jeu (ré majeur pour l'écran titre, sol majeur pour le jeu). Record gardé ; B
+sur l'écran titre coupe ou remet la musique.
+
+| Commande | Action |
+|---|---|
+| Stick (ou flèches) | voler dans les allées ; le virage est pris au prochain croisement |
+| START | commencer une partie |
+| B / bouton 2 (écran titre) | musique on / off |
+
+![GLOWBUG GARDEN dans Odin : l'écran titre et le premier jardin](docs/glowbug.png)
+
 ## Jouer sur le téléphone
 
-L'APK connaît les trois jeux, et leurs fichiers sont publiés avec lui à chaque
+L'APK connaît les quatre jeux, et leurs fichiers sont publiés avec lui à chaque
 version :
 
 1. Télécharger
    [odinhb.zip](https://github.com/Laurent-67370/odin-android/releases/download/odin-apk/odinhb.zip)
    (NOVA SIEGE),
    [odinshrd.zip](https://github.com/Laurent-67370/odin-android/releases/download/odin-apk/odinshrd.zip)
-   (SHARD STORM) et
+   (SHARD STORM),
    [odinvipr.zip](https://github.com/Laurent-67370/odin-android/releases/download/odin-apk/odinvipr.zip)
-   (VOLT VIPER).
+   (VOLT VIPER) et
+   [odinglow.zip](https://github.com/Laurent-67370/odin-android/releases/download/odin-apk/odinglow.zip)
+   (GLOWBUG GARDEN).
 2. Les ajouter : MENU → File → Add games… (ou les mettre à la main dans
    `Odin/roms`, à côté de `hikaru.zip` et `mie.zip`).
-3. Lancer **Nova Siege**, **Shard Storm** ou **Volt Viper** dans la liste des jeux.
+3. Lancer **Nova Siege**, **Shard Storm**, **Volt Viper** ou **Glowbug Garden** dans la liste des jeux.
 
 Après une mise à jour de l'APK qui change un homebrew, retélécharger son
 fichier : Odin vérifie que les EPROM sont celles que sa liste attend.
@@ -185,7 +213,8 @@ python3 build.py --games chemin/vers/odin-games.json   # ajoute aussi les jeux �
 
 Chaque jeu est un dossier avec un `game.json` (son nom de jeu à la MAME et son
 titre) : `nova-siege/` donne `build/odinhb.zip`, `shard-storm/` donne
-`build/odinshrd.zip`, `volt-viper/` donne `build/odinvipr.zip`. Un zip contient les deux EPROM du jeu (`<nom>.ic29` et
+`build/odinshrd.zip`, `volt-viper/` donne `build/odinvipr.zip`, `glowbug-garden/`
+donne `build/odinglow.zip`. Un zip contient les deux EPROM du jeu (`<nom>.ic29` et
 `<nom>.ic30`) et se met dans le dossier des ROM d'Odin, à côté de
 `hikaru.zip` et `mie.zip`.
 
