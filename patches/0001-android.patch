@@ -1,8 +1,8 @@
 diff --git a/CMakeLists.txt b/CMakeLists.txt
-index e034434..1e55c12 100644
+index e034434..fecc13d 100644
 --- a/CMakeLists.txt
 +++ b/CMakeLists.txt
-@@ -16,6 +16,12 @@ include(GNUInstallDirs)
+@@ -16,6 +16,27 @@ include(GNUInstallDirs)
  option(ODIN_NATIVE "Tune for this machine's CPU (-march=native)" ON)
  option(ODIN_LTO "Link-time optimisation (-flto)" ON)
  option(ODIN_GLES "Use OpenGL ES for embedded systems" OFF)
@@ -12,15 +12,30 @@ index e034434..1e55c12 100644
 +	# Bionic's PAGE_SIZE macro would stand for Sh4::PAGE_SIZE
 +	add_compile_definitions(__BIONIC_NO_PAGE_SIZE_MACRO)
 +endif()
++# iOS (experimental): Vulkan through MoltenVK, an app bundle; OpenGL ES 3.2
++# only compiled, its functions the system lacks stubbed (ODIN_GL_STUBS)
++if(IOS)
++	set(ODIN_GLES ON CACHE BOOL "Use OpenGL ES for embedded systems" FORCE)
++	add_compile_definitions(ODIN_IOS GLES_SILENCE_DEPRECATION)
++	# Every target in C++20 (Apple's compiler would take an older one where
++	# a target does not say)
++	set(CMAKE_CXX_STANDARD 20)
++	set(CMAKE_CXX_STANDARD_REQUIRED ON)
++endif()
++# A phone (Android, iOS): menus for a finger, the touch pad, the folders the
++# app is given
++if(ANDROID OR IOS)
++	add_compile_definitions(ODIN_PHONE)
++endif()
  set(ODIN_OPT_FLAGS "-O3 -fomit-frame-pointer -fno-stack-protector" CACHE STRING
  	"Optimisation flags")
  set(ODIN_PGO "" CACHE STRING "Profile-guided build: generate or use")
-@@ -119,18 +125,25 @@ function(odin_library name folder target)
+@@ -119,18 +140,25 @@ function(odin_library name folder target)
  	message(STATUS "${ARGN}: from 3rdparty/${folder}")
  endfunction()
  
 -if(ODIN_GLES AND NOT (UNIX AND NOT APPLE))
-+if(ODIN_GLES AND NOT (UNIX AND NOT APPLE) AND NOT ANDROID)
++if(ODIN_GLES AND NOT (UNIX AND NOT APPLE) AND NOT ANDROID AND NOT IOS)
  	message(FATAL_ERROR "ODIN_GLES is for Linux")
  endif()
  find_package(PkgConfig QUIET)
@@ -45,8 +60,20 @@ index e034434..1e55c12 100644
  
  set(JANSSON_BUILD_SHARED_LIBS OFF)
  set(JANSSON_EXAMPLES OFF)
-@@ -180,6 +193,8 @@ target_link_libraries(odin_deps INTERFACE odin_jansson odin_vulkan_headers)
- if(APPLE)
+@@ -177,9 +205,19 @@ endif()
+ 
+ add_library(odin_deps INTERFACE)
+ target_link_libraries(odin_deps INTERFACE odin_jansson odin_vulkan_headers)
+-if(APPLE)
++if(IOS)
++	# The headers of OpenGL ES 3.2 (Khronos) in ODIN_GLES_HEADERS; the
++	# functions iOS's OpenGL ES 3.0 lacks in ODIN_GL_STUBS (a C file)
++	set(ODIN_GLES_HEADERS "" CACHE PATH "Khronos headers: GLES3/gl32.h, GLES2/gl2ext.h, KHR/")
++	set(ODIN_GL_STUBS "" CACHE FILEPATH "C file of the OpenGL ES functions iOS lacks")
++	target_include_directories(odin_deps SYSTEM INTERFACE ${ODIN_GLES_HEADERS})
++	target_link_libraries(odin_deps INTERFACE "-framework OpenGLES" "-framework UIKit" "-framework Foundation")
++	set(HOST_WARN_FLAGS -Wno-sign-conversion)
++elseif(APPLE)
  	target_link_libraries(odin_deps INTERFACE odin_glew "-framework OpenGL")
  	set(HOST_WARN_FLAGS -Wno-sign-conversion)
 +elseif(ANDROID)
@@ -54,7 +81,7 @@ index e034434..1e55c12 100644
  elseif(UNIX AND ODIN_GLES)
  	odin_system_only(gles glesv2)
  	odin_system_only(x11 x11)
-@@ -221,8 +236,8 @@ set(ODIN_SOURCES
+@@ -221,8 +259,8 @@ set(ODIN_SOURCES
  	host/ui/folder_dialog.cpp host/ui/pad_view.cpp
  	host/ui/pad_drawings.cpp host/ui/pad_drawings_al2009man.cpp
  	host/ui/gun_drawings.cpp
@@ -65,7 +92,7 @@ index e034434..1e55c12 100644
  	host/input/pointers.cpp host/input/wheel_force.cpp host/input/gun_serial.cpp
  	host/input/evdev.cpp host/input/rawinput.cpp
  	host/input/outputs_network.cpp host/input/sockets.cpp
-@@ -312,7 +327,15 @@ set_source_files_properties(src/miniz/miniz.c PROPERTIES COMPILE_DEFINITIONS USE
+@@ -312,7 +350,15 @@ set_source_files_properties(src/miniz/miniz.c PROPERTIES COMPILE_DEFINITIONS USE
  set_source_files_properties(src/odin/host/app/zip_crc.cpp PROPERTIES
  	COMPILE_OPTIONS "-isystem;${CMAKE_SOURCE_DIR}/src/miniz")
  
@@ -82,7 +109,7 @@ index e034434..1e55c12 100644
  set(GLSL ${CMAKE_SOURCE_DIR}/src/odin/host/gfx/glsl)
  set(SPIRV_DIR ${CMAKE_BINARY_DIR}/spirv)
  file(MAKE_DIRECTORY ${SPIRV_DIR}/glsl)
-@@ -324,10 +347,10 @@ foreach(shader whole_picture.vert blend.frag compose.vert compose.frag present.f
+@@ -324,10 +370,10 @@ foreach(shader whole_picture.vert blend.frag compose.vert compose.frag present.f
  	string(REGEX REPLACE ".*\\." "" stage ${shader})
  	set(out ${SPIRV_DIR}/glsl/${shader}.spv)
  	if(shader STREQUAL "sort.frag")
@@ -95,7 +122,7 @@ index e034434..1e55c12 100644
  		set(inputs ${GLSL}/${shader})
  	endif()
  	add_custom_command(OUTPUT ${out}
-@@ -337,13 +360,13 @@ foreach(shader whole_picture.vert blend.frag compose.vert compose.frag present.f
+@@ -337,13 +383,13 @@ foreach(shader whole_picture.vert blend.frag compose.vert compose.frag present.f
  endforeach()
  set(out ${SPIRV_DIR}/glsl/mesh_collect.frag.spv)
  add_custom_command(OUTPUT ${out}
@@ -111,7 +138,7 @@ index e034434..1e55c12 100644
  		${GLSLANG} ${out} ${GLSL}/pmx.frag
  	DEPENDS ${GLSL}/pmx.frag VERBATIM)
  list(APPEND SPIRV ${out})
-@@ -355,14 +378,14 @@ foreach(variant list native_list)
+@@ -355,14 +401,14 @@ foreach(variant list native_list)
  		set(defines "echo '#define NATIVE 1'; echo '#define LIST 1'")
  	endif()
  	add_custom_command(OUTPUT ${out}
@@ -128,7 +155,7 @@ index e034434..1e55c12 100644
  		${GLSLANG} ${out} ${GLSL}/mesh.frag
  	DEPENDS ${GLSL}/mesh.frag VERBATIM)
  list(APPEND SPIRV ${out})
-@@ -429,8 +452,16 @@ set_source_files_properties(src/odin/host/app/rom_files.cpp PROPERTIES
+@@ -429,8 +475,27 @@ set_source_files_properties(src/odin/host/app/rom_files.cpp PROPERTIES
  set_source_files_properties(src/odin/host/gfx/host_graphics_vk.cpp PROPERTIES
  	COMPILE_DEFINITIONS "${VULKAN_FLAGS}")
  
@@ -140,6 +167,17 @@ index e034434..1e55c12 100644
 +	set_target_properties(odin PROPERTIES OUTPUT_NAME main)
 +	# Pages of 16 KB (Android 15 and later)
 +	target_link_options(odin PRIVATE -Wl,-z,max-page-size=16384)
++elseif(IOS)
++	add_executable(odin MACOSX_BUNDLE ${ODIN_SOURCES} ${ODIN_GL_STUBS}
++		$<TARGET_OBJECTS:odin_imgui> $<TARGET_OBJECTS:odin_archive> $<TARGET_OBJECTS:odin_embedded>)
++	set_target_properties(odin PROPERTIES OUTPUT_NAME Odin
++		MACOSX_BUNDLE_INFO_PLIST ${CMAKE_SOURCE_DIR}/dist/ios/Info.plist.in
++		MACOSX_BUNDLE_GUI_IDENTIFIER org.odinport.ios
++		MACOSX_BUNDLE_BUNDLE_VERSION "${version}"
++		MACOSX_BUNDLE_SHORT_VERSION_STRING "1.0"
++		XCODE_ATTRIBUTE_CODE_SIGNING_ALLOWED NO)
++	# MoltenVK.framework in the bundle's Frameworks, found by SDL
++	target_link_options(odin PRIVATE -Wl,-rpath,@executable_path/Frameworks)
 +else()
 +	add_executable(odin ${ODIN_SOURCES}
 +		$<TARGET_OBJECTS:odin_imgui> $<TARGET_OBJECTS:odin_archive> $<TARGET_OBJECTS:odin_embedded>)
@@ -147,6 +185,91 @@ index e034434..1e55c12 100644
  set_target_properties(odin PROPERTIES CXX_STANDARD 20 CXX_STANDARD_REQUIRED ON CXX_EXTENSIONS OFF
  	RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin)
  target_include_directories(odin PRIVATE src)
+@@ -494,7 +559,7 @@ foreach(glsl ${FILTER_GLSL})
+ endforeach()
+ add_custom_target(spirv ALL DEPENDS ${FILTER_SPIRV})
+ 
+-install(TARGETS odin RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR})
++install(TARGETS odin RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR} BUNDLE DESTINATION .)
+ install(DIRECTORY ${DATA} DESTINATION ${CMAKE_INSTALL_DATADIR})
+ if(UNIX AND NOT APPLE)
+ 	install(FILES dist/odin.desktop DESTINATION ${CMAKE_INSTALL_DATADIR}/applications)
+diff --git a/dist/ios/Info.plist.in b/dist/ios/Info.plist.in
+new file mode 100644
+index 0000000..30a2e0f
+--- /dev/null
++++ b/dist/ios/Info.plist.in
+@@ -0,0 +1,70 @@
++<?xml version="1.0" encoding="UTF-8"?>
++<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
++<!-- Odin on iOS (experimental): the app's Documents shown in Files, where
++     the folders roms/ and the settings are; the whole screen, both ways -->
++<plist version="1.0">
++<dict>
++	<key>CFBundleDevelopmentRegion</key>
++	<string>en</string>
++	<key>CFBundleDisplayName</key>
++	<string>Odin</string>
++	<key>CFBundleExecutable</key>
++	<string>${MACOSX_BUNDLE_EXECUTABLE_NAME}</string>
++	<key>CFBundleIdentifier</key>
++	<string>${MACOSX_BUNDLE_GUI_IDENTIFIER}</string>
++	<key>CFBundleInfoDictionaryVersion</key>
++	<string>6.0</string>
++	<key>CFBundleName</key>
++	<string>Odin</string>
++	<key>CFBundlePackageType</key>
++	<string>APPL</string>
++	<key>CFBundleShortVersionString</key>
++	<string>${MACOSX_BUNDLE_SHORT_VERSION_STRING}</string>
++	<key>CFBundleVersion</key>
++	<string>${MACOSX_BUNDLE_BUNDLE_VERSION}</string>
++	<key>CFBundleSupportedPlatforms</key>
++	<array>
++		<string>iPhoneOS</string>
++	</array>
++	<key>LSRequiresIPhoneOS</key>
++	<true/>
++	<key>MinimumOSVersion</key>
++	<string>16.3</string>
++	<key>UIDeviceFamily</key>
++	<array>
++		<integer>1</integer>
++		<integer>2</integer>
++	</array>
++	<key>UIRequiredDeviceCapabilities</key>
++	<array>
++		<string>arm64</string>
++		<string>metal</string>
++	</array>
++	<key>UILaunchScreen</key>
++	<dict/>
++	<key>UIRequiresFullScreen</key>
++	<true/>
++	<key>UIStatusBarHidden</key>
++	<true/>
++	<key>UIApplicationSupportsIndirectInputEvents</key>
++	<true/>
++	<key>UIFileSharingEnabled</key>
++	<true/>
++	<key>LSSupportsOpeningDocumentsInPlace</key>
++	<true/>
++	<key>UISupportedInterfaceOrientations</key>
++	<array>
++		<string>UIInterfaceOrientationPortrait</string>
++		<string>UIInterfaceOrientationLandscapeLeft</string>
++		<string>UIInterfaceOrientationLandscapeRight</string>
++	</array>
++	<key>UISupportedInterfaceOrientations~ipad</key>
++	<array>
++		<string>UIInterfaceOrientationPortrait</string>
++		<string>UIInterfaceOrientationLandscapeLeft</string>
++		<string>UIInterfaceOrientationLandscapeRight</string>
++	</array>
++	<key>GCSupportsControllerUserInteraction</key>
++	<true/>
++</dict>
++</plist>
 diff --git a/odin-games.json b/odin-games.json
 index 93ce8f8..27c48a2 100644
 --- a/odin-games.json
@@ -811,7 +934,7 @@ index 0000000..5c437f3
 +
 +#endif /* ODIN_IMPORT_GAMES_HPP */
 diff --git a/src/odin/host/app/library.cpp b/src/odin/host/app/library.cpp
-index 9d6ca81..2cef88c 100644
+index 9d6ca81..e2bbd75 100644
 --- a/src/odin/host/app/library.cpp
 +++ b/src/odin/host/app/library.cpp
 @@ -29,6 +29,7 @@
@@ -826,7 +949,7 @@ index 9d6ca81..2cef88c 100644
  	for (const GameList::Entry &entry : games.entries()) {
  		const std::string &name = entry.name;
  		const bool theirs = entry.machine != "hikaru";
-+#if defined(__ANDROID__)
++#if defined(ODIN_PHONE)
 +		/* The games made for the board in a group of their own, after the
 +		 * cabinets' */
 +		const std::string system = entry.homebrew ? "homebrew" : theirs ? "gaelco" : entry.machine;
@@ -880,7 +1003,7 @@ index c859303..8e88cb5 100644
                 const std::string &failed);
  
 diff --git a/src/odin/host/app/main.cpp b/src/odin/host/app/main.cpp
-index 1a4e66f..78cf705 100644
+index 1a4e66f..c6197ec 100644
 --- a/src/odin/host/app/main.cpp
 +++ b/src/odin/host/app/main.cpp
 @@ -25,7 +25,9 @@
@@ -893,7 +1016,7 @@ index 1a4e66f..78cf705 100644
  #include <cstdlib>
  #include <cstring>
  #include <memory>
-@@ -46,9 +48,18 @@
+@@ -46,9 +48,25 @@
  #include "odin/common/stop_message.hpp"
  #include "odin/host/app/session.hpp"
  #include "odin/host/app/settings.hpp"
@@ -908,11 +1031,18 @@ index 1a4e66f..78cf705 100644
 +#include <sched.h>
 +#include <unistd.h>
 +#endif
++#if defined(ODIN_IOS)
++/* SDL's UIApplication calls SDL_main; the folders of the app */
++#include <SDL3/SDL_hints.h>
++#include <SDL3/SDL_main.h>
++#include <filesystem>
++#include <stdlib.h>
++#endif
 +
  namespace odin {
  namespace {
  
-@@ -106,7 +117,7 @@ open_sound(Options &options, const Game &game, const Settings &settings)
+@@ -106,7 +124,7 @@ open_sound(Options &options, const Game &game, const Settings &settings)
   * command line and odin.ini hold for it, what it changes of them for itself
   * does not stay. */
  Ended
@@ -921,7 +1051,7 @@ index 1a4e66f..78cf705 100644
       const std::string &settings_file, Display &display, Keyboard &keys, Pointers *pointers, Opened &opened)
  {
  	Options options = given;
-@@ -267,6 +278,50 @@ games_test_list()
+@@ -267,6 +285,50 @@ games_test_list()
  	return next;
  }
  
@@ -972,7 +1102,7 @@ index 1a4e66f..78cf705 100644
  } /* namespace */
  } /* namespace odin */
  
-@@ -276,6 +331,13 @@ main(int argc, char **argv)
+@@ -276,6 +338,32 @@ main(int argc, char **argv)
  	odin::Options options;
  	odin::GameList games;
  
@@ -983,10 +1113,29 @@ index 1a4e66f..78cf705 100644
 +	 * the menus and the touch pad lay themselves out for the window */
 +	SDL_SetHint(SDL_HINT_ORIENTATIONS, "LandscapeLeft LandscapeRight Portrait");
 +#endif
++#if defined(ODIN_IOS)
++	/* iOS: the app's Documents (shown in Files) hold roms/, the settings and
++	 * the log, as Odin/ does on Android; the data of the app (the list of
++	 * the games, the filters) are in its bundle. user_files.cpp reads them
++	 * from the same variables as on Android. */
++	if (const char *documents = SDL_GetUserFolder(SDL_FOLDER_DOCUMENTS)) {
++		std::string folder = documents;
++		std::error_code made;
++
++		while (!folder.empty() && folder.back() == '/')
++			folder.pop_back();
++		std::filesystem::create_directories(folder + "/roms", made);
++		setenv("ODIN_ANDROID_FOLDER", folder.c_str(), 0);
++		setenv("HOME", folder.c_str(), 1);
++	}
++	if (const char *bundle = SDL_GetBasePath())
++		setenv("ODIN_ANDROID_DATA", bundle, 0);
++	SDL_SetHint(SDL_HINT_ORIENTATIONS, "LandscapeLeft LandscapeRight Portrait");
++#endif
  	/* With the OpenGL driver of Intel loaded, a process of Windows ends
  	 * without what its buffers still hold: it goes out here. */
  	std::atexit([] { std::fflush(nullptr); });
-@@ -291,6 +353,11 @@ main(int argc, char **argv)
+@@ -291,6 +379,11 @@ main(int argc, char **argv)
  	}
  	odin::start_log(options);
  	odin::print_banner();
@@ -998,7 +1147,7 @@ index 1a4e66f..78cf705 100644
  	if (parsed != odin::Parsed::RUN) {
  		odin::print_help(argv[0]);
  		return parsed == odin::Parsed::HELP_ASKED ? 0 : 1;
-@@ -300,6 +367,14 @@ main(int argc, char **argv)
+@@ -300,6 +393,14 @@ main(int argc, char **argv)
  		std::fprintf(stderr, "ERROR: failed to load the game list\n");
  		return 1;
  	}
@@ -1131,7 +1280,7 @@ index 9533e22..28a386f 100644
  	/* The bar, until when it is shown since the mouse moved, the buttons
  	 * of the mouse pressed on it, until when its word is said */
 diff --git a/src/odin/host/app/user_files.cpp b/src/odin/host/app/user_files.cpp
-index 6990a0c..c8f98d8 100644
+index 6990a0c..d736e4f 100644
 --- a/src/odin/host/app/user_files.cpp
 +++ b/src/odin/host/app/user_files.cpp
 @@ -44,7 +44,7 @@ namespace odin {
@@ -1147,7 +1296,7 @@ index 6990a0c..c8f98d8 100644
  
  } /* namespace */
  
-+#if defined(__ANDROID__)
++#if defined(ODIN_PHONE)
 +/* Android: the folder the activity chose (shared storage, Odin/), where the
 + * roms, the artwork, the settings and the log are; the data of the APK
 + * (odin-games.json, the filters) unpacked by the activity in its own */
@@ -1825,14 +1974,14 @@ index c29c57e..9f4fd5f 100644
  	uint32_t m_stamp_bits = 0;
  	bool m_validation = false;
 diff --git a/src/odin/host/input/bindings.cpp b/src/odin/host/input/bindings.cpp
-index ea40540..b11bff6 100644
+index ea40540..f1fc003 100644
 --- a/src/odin/host/input/bindings.cpp
 +++ b/src/odin/host/input/bindings.cpp
 @@ -550,6 +550,13 @@ Bindings::keys_toward(Role role, unsigned player, bool positive)
  		if (const auto input = HostInput::parse(std::string("key:") + key))
  			out.push_back(*input);
  	}
-+#if defined(__ANDROID__)
++#if defined(ODIN_PHONE)
 +	/* The touch pad has one stick: the second one of player 1 left and
 +	 * right on its triggers (the ROLL of Air Trix) */
 +	if (role == Role::STICK2_X && player == 0)
@@ -1963,7 +2112,7 @@ index 3cad3b1..b54f8d8 100644
  
 diff --git a/src/odin/host/input/touch_pad.cpp b/src/odin/host/input/touch_pad.cpp
 new file mode 100644
-index 0000000..853e7cf
+index 0000000..49f14d9
 --- /dev/null
 +++ b/src/odin/host/input/touch_pad.cpp
 @@ -0,0 +1,922 @@
@@ -2548,7 +2697,7 @@ index 0000000..853e7cf
 +bool
 +touch_pad_wanted()
 +{
-+#if defined(__ANDROID__)
++#if defined(ODIN_PHONE)
 +	return !SDL_GetHintBoolean("ODIN_NO_TOUCH_PAD", false) && !SDL_getenv("ODIN_NO_TOUCH_PAD");
 +#else
 +	return SDL_getenv("ODIN_TOUCH_PAD") != nullptr;
@@ -3883,7 +4032,7 @@ index 01c47b0..ecac89a 100644
  	/* The event that says the answer has come, and the answer, once */
  	Uint32 event() const;
 diff --git a/src/odin/host/ui/menu.cpp b/src/odin/host/ui/menu.cpp
-index 0678015..809eb6c 100644
+index 0678015..54ad0d8 100644
 --- a/src/odin/host/ui/menu.cpp
 +++ b/src/odin/host/ui/menu.cpp
 @@ -28,6 +28,7 @@
@@ -3898,7 +4047,7 @@ index 0678015..809eb6c 100644
   * sooner, as the window is larger (the drawings of the page Input already
   * are, at 1600 by 900) */
  constexpr float LETTERS_UP = 0.45f;
-+#if defined(__ANDROID__)
++#if defined(ODIN_PHONE)
 +/* The least room the menu keeps on a phone, in points (Menu::follow_scale) */
 +constexpr float PHONE_W = 760.0f;
 +constexpr float PHONE_H = 340.0f;
@@ -3916,7 +4065,7 @@ index 0678015..809eb6c 100644
 -	const float scale = std::max(1.0f, std::min(size.x / made.x, size.y / made.y));
 +	float scale = std::max(1.0f, std::min(size.x / made.x, size.y / made.y));
  	const float density = std::max(1.0f, SDL_GetWindowPixelDensity(m_window));
-+#if defined(__ANDROID__)
++#if defined(ODIN_PHONE)
 +	/* A phone: its points are its pixels, a few to the millimetre, and the
 +	 * menu made for a monitor is too small to read. It takes the whole
 +	 * factor of the screen's density (3 at 420 dpi) where the window still
@@ -4042,7 +4191,7 @@ index d908c1f..4db9e13 100644
  	const MenuPalette *m_palette = &RUNASTEINN;
  	/* The frame the gamepad moves on the page */
 diff --git a/src/odin/host/ui/menu_bar.cpp b/src/odin/host/ui/menu_bar.cpp
-index 0282be6..6765a12 100644
+index 0282be6..b461f21 100644
 --- a/src/odin/host/ui/menu_bar.cpp
 +++ b/src/odin/host/ui/menu_bar.cpp
 @@ -45,6 +45,7 @@
@@ -4059,7 +4208,7 @@ index 0282be6..6765a12 100644
  constexpr float NAME_WIDE = 7.0f;
 -constexpr float NAME_HIGH = 5.0f;
  constexpr float NAME_GAP = 10.0f;
-+#if defined(__ANDROID__)
++#if defined(ODIN_PHONE)
 +/* A finger, not a mouse: the bar and the lines of its menus further apart */
 +constexpr float NAME_HIGH = 10.0f;
 +constexpr float ITEMS_INSIDE = 9.0f;
@@ -4107,7 +4256,7 @@ index 0282be6..6765a12 100644
  		b.ask(Ask::CLOSE);
  	if (item("Reset", b.key(Action::RESET), false, state.game))
 diff --git a/src/odin/host/ui/menu_kit.cpp b/src/odin/host/ui/menu_kit.cpp
-index 680fc66..ecf8b5b 100644
+index 680fc66..23b7df4 100644
 --- a/src/odin/host/ui/menu_kit.cpp
 +++ b/src/odin/host/ui/menu_kit.cpp
 @@ -41,12 +41,20 @@ namespace {
@@ -4119,7 +4268,7 @@ index 680fc66..ecf8b5b 100644
  constexpr float CELL_WIDE = 7.0f;
 -constexpr float CELL_HIGH = 3.0f;
  constexpr float BUTTON_WIDE = 8.0f;
-+#if defined(__ANDROID__)
++#if defined(ODIN_PHONE)
 +/* A finger, not a mouse: the rows of the pages, the lines of a list and the
 + * buttons taller */
 +constexpr float ROW_PAD = 13.0f;
@@ -4134,7 +4283,7 @@ index 680fc66..ecf8b5b 100644
   * the control goes under them */
  constexpr float TEXT_LEAST = 120.0f;
 diff --git a/src/odin/host/ui/menu_library.cpp b/src/odin/host/ui/menu_library.cpp
-index 3f7b4e4..1571773 100644
+index 3f7b4e4..2031b3c 100644
 --- a/src/odin/host/ui/menu_library.cpp
 +++ b/src/odin/host/ui/menu_library.cpp
 @@ -55,6 +55,9 @@ constexpr float GAP = 12.0f;
@@ -4151,7 +4300,7 @@ index 3f7b4e4..1571773 100644
  	const std::string &quit = bar_state.keys[static_cast<size_t>(Hotkeys::Action::QUIT)];
  	const std::string keys = "Enter" + (state.press.empty() ? "" : " or " + state.press) + ": play" +
  	                         (quit.empty() ? "" : "    " + quit + ": quit");
-+#if defined(__ANDROID__)
++#if defined(ODIN_PHONE)
 +	/* A phone held upright: the sheet under the tiles, the keys left out of
 +	 * the head (no room, and no keyboard) */
 +	const bool upright = room.y > room.x;
@@ -4280,7 +4429,7 @@ index d6b727c..f2e748b 100644
  	const std::string home = env_text("HOME"), data = env_text("XDG_DATA_HOME");
  
 diff --git a/src/odin/host/video/display.cpp b/src/odin/host/video/display.cpp
-index f185cd7..73a5337 100644
+index f185cd7..ae27ea5 100644
 --- a/src/odin/host/video/display.cpp
 +++ b/src/odin/host/video/display.cpp
 @@ -26,6 +26,7 @@
@@ -4295,7 +4444,7 @@ index f185cd7..73a5337 100644
  SDL_Window *
  make_window(uint64_t flags)
  {
-+#if defined(__ANDROID__)
++#if defined(ODIN_PHONE)
 +	/* A phone: the whole screen, which SDL keeps without the bars of the
 +	 * system (immersive), the app back in front too; a window not on the
 +	 * whole display has SDL show them (SDLActivity.setWindowStyle) */
@@ -4336,14 +4485,14 @@ index 971939e..5b3933c 100644
  
  } /* namespace odin */
 diff --git a/src/odin/host/video/display_window.cpp b/src/odin/host/video/display_window.cpp
-index 930cdc4..f5a6917 100644
+index 930cdc4..66e882f 100644
 --- a/src/odin/host/video/display_window.cpp
 +++ b/src/odin/host/video/display_window.cpp
 @@ -190,6 +190,10 @@ Display::display_size(unsigned &w, unsigned &h) const
  void
  Display::toggle_fullscreen()
  {
-+#if defined(__ANDROID__)
++#if defined(ODIN_PHONE)
 +	/* Always the whole screen on a phone (make_window) */
 +	return;
 +#endif
@@ -4468,3 +4617,58 @@ index cb9126f..fcbe8ea 100644
  
  	/* False, with the reason on stderr, if the state could not be written
  	 * or is not one of this game and build; the board is then as after a
+diff --git a/src/odin/machine/core/host_code.cpp b/src/odin/machine/core/host_code.cpp
+index 6d950a3..4fda6ea 100644
+--- a/src/odin/machine/core/host_code.cpp
++++ b/src/odin/machine/core/host_code.cpp
+@@ -37,6 +37,14 @@
+ #include <pthread.h>
+ #endif
+ #endif
++/* macOS: the code memory MAP_JIT, written and run in turn
++ * (pthread_jit_write_protect_np). iOS has neither: there the memory is
++ * read, write and execute at once, which iOS grants only to an app whose JIT
++ * a debugger enabled (StikDebug); otherwise it cannot be had, and Odin says
++ * so. */
++#if defined(__APPLE__) && defined(ODIN_HOST_AARCH64) && !defined(ODIN_IOS)
++#define ODIN_MAC_JIT 1
++#endif
+ 
+ namespace odin {
+ 
+@@ -62,7 +70,7 @@ uint8_t *take(uintptr_t at, uint32_t size)
+ #else
+ 	const int fixed = 0;
+ #endif
+-#if defined(__APPLE__) && defined(ODIN_HOST_AARCH64)
++#if defined(ODIN_MAC_JIT)
+ 	const int jit = MAP_JIT;
+ #else
+ 	const int jit = 0;
+@@ -130,7 +138,7 @@ HostCode::~HostCode()
+ 	}
+ }
+ 
+-#if defined(__APPLE__) && defined(ODIN_HOST_AARCH64)
++#if defined(ODIN_MAC_JIT)
+ namespace {
+ thread_local bool g_writing = false;
+ }
+@@ -138,7 +146,7 @@ thread_local bool g_writing = false;
+ 
+ void HostCode::writable()
+ {
+-#if defined(__APPLE__) && defined(ODIN_HOST_AARCH64)
++#if defined(ODIN_MAC_JIT)
+ 	if (!g_writing) {
+ 		pthread_jit_write_protect_np(0);
+ 		g_writing = true;
+@@ -149,7 +157,7 @@ void HostCode::writable()
+ void HostCode::ready() const
+ {
+ #if defined(ODIN_HOST_AARCH64)
+-#if defined(__APPLE__)
++#if defined(ODIN_MAC_JIT)
+ 	if (g_writing) {
+ 		pthread_jit_write_protect_np(1);
+ 		g_writing = false;
