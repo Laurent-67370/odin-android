@@ -1008,7 +1008,7 @@ index c859303..8e88cb5 100644
                 const std::string &failed);
  
 diff --git a/src/odin/host/app/main.cpp b/src/odin/host/app/main.cpp
-index 1a4e66f..b3f9e3d 100644
+index 1a4e66f..c52eb0c 100644
 --- a/src/odin/host/app/main.cpp
 +++ b/src/odin/host/app/main.cpp
 @@ -25,7 +25,9 @@
@@ -1021,7 +1021,7 @@ index 1a4e66f..b3f9e3d 100644
  #include <cstdlib>
  #include <cstring>
  #include <memory>
-@@ -46,9 +48,25 @@
+@@ -46,9 +48,26 @@
  #include "odin/common/stop_message.hpp"
  #include "odin/host/app/session.hpp"
  #include "odin/host/app/settings.hpp"
@@ -1040,6 +1040,7 @@ index 1a4e66f..b3f9e3d 100644
 +/* SDL's UIApplication calls SDL_main; the folders of the app */
 +#include <SDL3/SDL_hints.h>
 +#include <SDL3/SDL_main.h>
++#include <dlfcn.h>
 +#include <filesystem>
 +#include <stdlib.h>
 +#endif
@@ -1047,7 +1048,7 @@ index 1a4e66f..b3f9e3d 100644
  namespace odin {
  namespace {
  
-@@ -106,7 +124,7 @@ open_sound(Options &options, const Game &game, const Settings &settings)
+@@ -106,7 +125,7 @@ open_sound(Options &options, const Game &game, const Settings &settings)
   * command line and odin.ini hold for it, what it changes of them for itself
   * does not stay. */
  Ended
@@ -1056,7 +1057,7 @@ index 1a4e66f..b3f9e3d 100644
       const std::string &settings_file, Display &display, Keyboard &keys, Pointers *pointers, Opened &opened)
  {
  	Options options = given;
-@@ -267,6 +285,50 @@ games_test_list()
+@@ -267,6 +286,50 @@ games_test_list()
  	return next;
  }
  
@@ -1107,7 +1108,7 @@ index 1a4e66f..b3f9e3d 100644
  } /* namespace */
  } /* namespace odin */
  
-@@ -276,6 +338,32 @@ main(int argc, char **argv)
+@@ -276,6 +339,50 @@ main(int argc, char **argv)
  	odin::Options options;
  	odin::GameList games;
  
@@ -1136,14 +1137,35 @@ index 1a4e66f..b3f9e3d 100644
 +	if (const char *bundle = SDL_GetBasePath())
 +		setenv("ODIN_ANDROID_DATA", bundle, 0);
 +	SDL_SetHint(SDL_HINT_ORIENTATIONS, "LandscapeLeft LandscapeRight Portrait");
++	/* Vulkan: SDL looks for libvulkan.dylib alone; MoltenVK is in the
++	 * Frameworks of the bundle, next to Odin's own file (found from it, not
++	 * from the app's: LiveContainer runs Odin inside itself) */
++	std::string vulkan;
++	{
++		Dl_info self{};
++
++		if (dladdr(reinterpret_cast<const void *>(&odin::odin_version), &self) && self.dli_fname) {
++			const std::filesystem::path at =
++				std::filesystem::path(self.dli_fname).parent_path() / "Frameworks/MoltenVK.framework/MoltenVK";
++			std::error_code there;
++
++			if (std::filesystem::exists(at, there)) {
++				vulkan = at.string();
++				SDL_SetHint(SDL_HINT_VULKAN_LIBRARY, vulkan.c_str());
++			}
++		}
++	}
 +#endif
  	/* With the OpenGL driver of Intel loaded, a process of Windows ends
  	 * without what its buffers still hold: it goes out here. */
  	std::atexit([] { std::fflush(nullptr); });
-@@ -291,6 +379,11 @@ main(int argc, char **argv)
+@@ -291,6 +398,14 @@ main(int argc, char **argv)
  	}
  	odin::start_log(options);
  	odin::print_banner();
++#if defined(ODIN_IOS)
++	std::fprintf(stderr, "Vulkan: %s\n", vulkan.empty() ? "MoltenVK not found in the bundle" : vulkan.c_str());
++#endif
 +#if defined(__ANDROID__)
 +	/* Before the drawing thread, which takes the same cores; after the
 +	 * log, which tells them */
@@ -1152,7 +1174,7 @@ index 1a4e66f..b3f9e3d 100644
  	if (parsed != odin::Parsed::RUN) {
  		odin::print_help(argv[0]);
  		return parsed == odin::Parsed::HELP_ASKED ? 0 : 1;
-@@ -300,6 +393,14 @@ main(int argc, char **argv)
+@@ -300,6 +415,14 @@ main(int argc, char **argv)
  		std::fprintf(stderr, "ERROR: failed to load the game list\n");
  		return 1;
  	}
