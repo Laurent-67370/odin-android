@@ -1,8 +1,8 @@
 diff --git a/CMakeLists.txt b/CMakeLists.txt
-index e034434..a6a2729 100644
+index e034434..fecc13d 100644
 --- a/CMakeLists.txt
 +++ b/CMakeLists.txt
-@@ -16,6 +16,23 @@ include(GNUInstallDirs)
+@@ -16,6 +16,27 @@ include(GNUInstallDirs)
  option(ODIN_NATIVE "Tune for this machine's CPU (-march=native)" ON)
  option(ODIN_LTO "Link-time optimisation (-flto)" ON)
  option(ODIN_GLES "Use OpenGL ES for embedded systems" OFF)
@@ -17,6 +17,10 @@ index e034434..a6a2729 100644
 +if(IOS)
 +	set(ODIN_GLES ON CACHE BOOL "Use OpenGL ES for embedded systems" FORCE)
 +	add_compile_definitions(ODIN_IOS GLES_SILENCE_DEPRECATION)
++	# Every target in C++20 (Apple's compiler would take an older one where
++	# a target does not say)
++	set(CMAKE_CXX_STANDARD 20)
++	set(CMAKE_CXX_STANDARD_REQUIRED ON)
 +endif()
 +# A phone (Android, iOS): menus for a finger, the touch pad, the folders the
 +# app is given
@@ -26,7 +30,7 @@ index e034434..a6a2729 100644
  set(ODIN_OPT_FLAGS "-O3 -fomit-frame-pointer -fno-stack-protector" CACHE STRING
  	"Optimisation flags")
  set(ODIN_PGO "" CACHE STRING "Profile-guided build: generate or use")
-@@ -119,18 +136,25 @@ function(odin_library name folder target)
+@@ -119,18 +140,25 @@ function(odin_library name folder target)
  	message(STATUS "${ARGN}: from 3rdparty/${folder}")
  endfunction()
  
@@ -56,7 +60,7 @@ index e034434..a6a2729 100644
  
  set(JANSSON_BUILD_SHARED_LIBS OFF)
  set(JANSSON_EXAMPLES OFF)
-@@ -177,9 +201,19 @@ endif()
+@@ -177,9 +205,19 @@ endif()
  
  add_library(odin_deps INTERFACE)
  target_link_libraries(odin_deps INTERFACE odin_jansson odin_vulkan_headers)
@@ -77,7 +81,7 @@ index e034434..a6a2729 100644
  elseif(UNIX AND ODIN_GLES)
  	odin_system_only(gles glesv2)
  	odin_system_only(x11 x11)
-@@ -221,8 +255,8 @@ set(ODIN_SOURCES
+@@ -221,8 +259,8 @@ set(ODIN_SOURCES
  	host/ui/folder_dialog.cpp host/ui/pad_view.cpp
  	host/ui/pad_drawings.cpp host/ui/pad_drawings_al2009man.cpp
  	host/ui/gun_drawings.cpp
@@ -88,7 +92,7 @@ index e034434..a6a2729 100644
  	host/input/pointers.cpp host/input/wheel_force.cpp host/input/gun_serial.cpp
  	host/input/evdev.cpp host/input/rawinput.cpp
  	host/input/outputs_network.cpp host/input/sockets.cpp
-@@ -312,7 +346,15 @@ set_source_files_properties(src/miniz/miniz.c PROPERTIES COMPILE_DEFINITIONS USE
+@@ -312,7 +350,15 @@ set_source_files_properties(src/miniz/miniz.c PROPERTIES COMPILE_DEFINITIONS USE
  set_source_files_properties(src/odin/host/app/zip_crc.cpp PROPERTIES
  	COMPILE_OPTIONS "-isystem;${CMAKE_SOURCE_DIR}/src/miniz")
  
@@ -105,7 +109,7 @@ index e034434..a6a2729 100644
  set(GLSL ${CMAKE_SOURCE_DIR}/src/odin/host/gfx/glsl)
  set(SPIRV_DIR ${CMAKE_BINARY_DIR}/spirv)
  file(MAKE_DIRECTORY ${SPIRV_DIR}/glsl)
-@@ -324,10 +366,10 @@ foreach(shader whole_picture.vert blend.frag compose.vert compose.frag present.f
+@@ -324,10 +370,10 @@ foreach(shader whole_picture.vert blend.frag compose.vert compose.frag present.f
  	string(REGEX REPLACE ".*\\." "" stage ${shader})
  	set(out ${SPIRV_DIR}/glsl/${shader}.spv)
  	if(shader STREQUAL "sort.frag")
@@ -118,7 +122,7 @@ index e034434..a6a2729 100644
  		set(inputs ${GLSL}/${shader})
  	endif()
  	add_custom_command(OUTPUT ${out}
-@@ -337,13 +379,13 @@ foreach(shader whole_picture.vert blend.frag compose.vert compose.frag present.f
+@@ -337,13 +383,13 @@ foreach(shader whole_picture.vert blend.frag compose.vert compose.frag present.f
  endforeach()
  set(out ${SPIRV_DIR}/glsl/mesh_collect.frag.spv)
  add_custom_command(OUTPUT ${out}
@@ -134,7 +138,7 @@ index e034434..a6a2729 100644
  		${GLSLANG} ${out} ${GLSL}/pmx.frag
  	DEPENDS ${GLSL}/pmx.frag VERBATIM)
  list(APPEND SPIRV ${out})
-@@ -355,14 +397,14 @@ foreach(variant list native_list)
+@@ -355,14 +401,14 @@ foreach(variant list native_list)
  		set(defines "echo '#define NATIVE 1'; echo '#define LIST 1'")
  	endif()
  	add_custom_command(OUTPUT ${out}
@@ -151,7 +155,7 @@ index e034434..a6a2729 100644
  		${GLSLANG} ${out} ${GLSL}/mesh.frag
  	DEPENDS ${GLSL}/mesh.frag VERBATIM)
  list(APPEND SPIRV ${out})
-@@ -429,8 +471,27 @@ set_source_files_properties(src/odin/host/app/rom_files.cpp PROPERTIES
+@@ -429,8 +475,27 @@ set_source_files_properties(src/odin/host/app/rom_files.cpp PROPERTIES
  set_source_files_properties(src/odin/host/gfx/host_graphics_vk.cpp PROPERTIES
  	COMPILE_DEFINITIONS "${VULKAN_FLAGS}")
  
@@ -181,7 +185,7 @@ index e034434..a6a2729 100644
  set_target_properties(odin PROPERTIES CXX_STANDARD 20 CXX_STANDARD_REQUIRED ON CXX_EXTENSIONS OFF
  	RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin)
  target_include_directories(odin PRIVATE src)
-@@ -494,7 +555,7 @@ foreach(glsl ${FILTER_GLSL})
+@@ -494,7 +559,7 @@ foreach(glsl ${FILTER_GLSL})
  endforeach()
  add_custom_target(spirv ALL DEPENDS ${FILTER_SPIRV})
  
@@ -192,7 +196,7 @@ index e034434..a6a2729 100644
  	install(FILES dist/odin.desktop DESTINATION ${CMAKE_INSTALL_DATADIR}/applications)
 diff --git a/dist/ios/Info.plist.in b/dist/ios/Info.plist.in
 new file mode 100644
-index 0000000..88ce9a1
+index 0000000..30a2e0f
 --- /dev/null
 +++ b/dist/ios/Info.plist.in
 @@ -0,0 +1,70 @@
@@ -227,7 +231,7 @@ index 0000000..88ce9a1
 +	<key>LSRequiresIPhoneOS</key>
 +	<true/>
 +	<key>MinimumOSVersion</key>
-+	<string>15.0</string>
++	<string>16.3</string>
 +	<key>UIDeviceFamily</key>
 +	<array>
 +		<integer>1</integer>

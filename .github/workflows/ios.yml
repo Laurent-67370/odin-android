@@ -50,7 +50,7 @@ jobs:
       - name: Odin for iOS (arm64)
         run: |
           cmake -S odin-src -B build -G Ninja \
-            -DCMAKE_SYSTEM_NAME=iOS -DCMAKE_OSX_ARCHITECTURES=arm64 -DCMAKE_OSX_DEPLOYMENT_TARGET=15.0 \
+            -DCMAKE_SYSTEM_NAME=iOS -DCMAKE_OSX_ARCHITECTURES=arm64 -DCMAKE_OSX_DEPLOYMENT_TARGET=16.3 \
             -DODIN_BUNDLED_LIBS=ON -DODIN_NATIVE=OFF -DODIN_LTO=OFF \
             -DGLSLANG="$(command -v glslangValidator)" -DAWK="$(command -v gawk)" \
             -DODIN_GLES_HEADERS="$PWD/khr" -DODIN_GL_STUBS="$PWD/khr/gl_stubs.c" \
@@ -79,4 +79,4 @@ jobs:
           gh release delete odin-ios --yes --cleanup-tag || true
           gh release create odin-ios odin.ipa --target "$GITHUB_SHA" --prerelease \
             --title "Odin iOS ${ODIN_IOS_VERSION} (experimental)" \
-            --notes "Experimental, unsigned build of Odin for iPhone (arm64, iOS 15+), from Odin ${ODIN_COMMIT::7} and ${GITHUB_SHA::7}. Sideload odin.ipa with SideStore or AltStore. Put hikaru.zip, mie.zip and the games in the app's folder roms/ (Files app, On My iPhone, Odin). Step 1: menus, game list, touch gamepad; the games need the JIT (StikDebug), not done yet."
+            --notes "Experimental, unsigned build of Odin for iPhone (arm64, iOS 16.3+), from Odin ${ODIN_COMMIT::7} and ${GITHUB_SHA::7}. Sideload odin.ipa with SideStore or AltStore. Put hikaru.zip, mie.zip and the games in the app's folder roms/ (Files app, On My iPhone, Odin). Step 1: menus, game list, touch gamepad; the games need the JIT (StikDebug), not done yet."
