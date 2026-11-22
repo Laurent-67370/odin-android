@@ -71,15 +71,16 @@ vérifie que chaque branche proposée compile seule pour Android
 
 **Et iOS ?** Une version expérimentale se construit dans
 [odin-ios](https://github.com/Laurent-67370/odin-ios), à partir du même patch
-(menus, manette tactile, dossiers communs aux deux) : l'app s'ouvre, les jeux
-attendent le JIT. Des bêta-testeurs sont recherchés. Le fond du problème (question posée dans
-[Tovarichtch/Odin#56](https://github.com/Tovarichtch/Odin/issues/56)). Odin n'a
-pas d'interpréteur : il recompile toujours le SH-4 et l'ARM7 en ARM64, donc il
-lui faut un JIT, ce qu'iOS n'accorde qu'à une app installée en sideload avec un
-outil d'activation du JIT. Sa mémoire de code (`MAP_JIT`,
-`pthread_jit_write_protect_np`) devrait passer à la méthode des émulateurs iOS.
-Le reste (SDL3, MoltenVK, la manette tactile) se porte : l'`.ipa` est construit
-sur les Mac de GitHub, et ce sont les testeurs qui l'essaient sur leur iPhone.
+(menus, manette tactile, dossiers communs aux deux). Des bêta-testeurs sont
+recherchés ([Tovarichtch/Odin#56](https://github.com/Tovarichtch/Odin/issues/56)).
+Odin recompile le SH-4 et l'ARM7 en ARM64 (le JIT), ce qu'iOS n'accorde qu'à
+une app dont un débogueur a activé le JIT (StikDebug) : sa mémoire de code y
+est alors projetée deux fois, une vue pour écrire, une pour exécuter, comme
+dans les émulateurs iOS. Sans JIT, Odin exécute les instructions décodées,
+sans les recompiler : environ deux fois plus lent, mais les jeux tournent
+(jusqu'ici, cette voie plantait faute de mémoire de code). Le reste (SDL3,
+MoltenVK, la manette tactile) se porte : l'`.ipa` est construit sur les Mac de
+GitHub, et ce sont les testeurs qui l'essaient.
 
 ## Installer
 
