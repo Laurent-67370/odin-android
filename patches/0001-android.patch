@@ -162,6 +162,32 @@ index 93ce8f8..27c48a2 100644
  				{ "name" : "UP", "id" : "up", "switch" : "1P UP", "role" : "button5", "keys" : [ "Up" ] },
  				{ "name" : "DOWN", "id" : "down", "switch" : "1P DOWN", "role" : "button6", "keys" : [ "Down" ] },
  				{ "name" : "YAW", "id" : "yaw", "analog" : 0, "low" : "left", "role" : "stick_x" },
+diff --git a/src/odin/host/app/atvtrack_play.cpp b/src/odin/host/app/atvtrack_play.cpp
+index 3e9ff4e..15ebb6e 100644
+--- a/src/odin/host/app/atvtrack_play.cpp
++++ b/src/odin/host/app/atvtrack_play.cpp
+@@ -353,7 +353,7 @@ AtvGame::run_frame()
+ } /* namespace */
+ 
+ Ended
+-play_atvtrack(const Options &options, const Game &game, const GameList &games, Settings &settings,
++play_atvtrack(const Options &options, const Game &game, GameList &games, Settings &settings,
+               const std::string &settings_file, Display &display, Keyboard &keys, Pointers *pointers, Opened &opened)
+ {
+ 	Controls controls(keys, game.controls, game.outputs, settings, game.name);
+diff --git a/src/odin/host/app/atvtrack_play.hpp b/src/odin/host/app/atvtrack_play.hpp
+index 9955f44..fb07783 100644
+--- a/src/odin/host/app/atvtrack_play.hpp
++++ b/src/odin/host/app/atvtrack_play.hpp
+@@ -36,7 +36,7 @@ namespace odin {
+ 
+ /* Runs an ATV Track game in Odin's window, with the Hikaru menu, bar and
+  * controls. */
+-Ended play_atvtrack(const Options &options, const Game &game, const GameList &games, Settings &settings,
++Ended play_atvtrack(const Options &options, const Game &game, GameList &games, Settings &settings,
+                     const std::string &settings_file, Display &display, Keyboard &keys, Pointers *pointers,
+                     Opened &opened);
+ 
 diff --git a/src/odin/host/app/games.cpp b/src/odin/host/app/games.cpp
 index 4482739..b593029 100644
 --- a/src/odin/host/app/games.cpp
