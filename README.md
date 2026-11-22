@@ -17,7 +17,7 @@ https://github.com/Laurent-67370/odin-android/releases/download/odin-apk/odin.ap
   <img src="docs/games-list.jpg" alt="La liste des jeux d'Odin sur le téléphone" width="520">
 </p>
 
-<p align="center"><em>Star Wars Racer Arcade en course (60 images/s) ; Air Trix en portrait ; la liste des jeux.
+<p align="center"><em>Star Wars Racer Arcade en course (60 images/s) ; Air Trix en portrait ; la liste des jeux, avec les quatre jeux maison.
 Captures d'un Snapdragon 8 Gen 2.</em></p>
 
 ## État
@@ -35,11 +35,12 @@ Captures d'un Snapdragon 8 Gen 2.</em></p>
 | Quitter puis revenir dans l'app | le jeu reprend (pas d'écran noir) |
 | Records et réglages des bornes | gardés, aussi quand Android ferme l'app en arrière-plan |
 | Mises à jour | par-dessus l'ancienne version (APK signé d'une clé fixe) |
-| Ajouter des jeux | MENU → File → Add games… : le sélecteur du téléphone, chaque archive copiée dans `Odin/roms` sous le bon nom (reconnue à son contenu) |
-| **NOVA SIEGE** (homebrew du dépôt) | jeu de tir original pour la Hikaru : son, musique, record gardé, vagues variées, vaisseau-mère ; [odinhb.zip](https://github.com/Laurent-67370/odin-android/releases/download/odin-apk/odinhb.zip) dans `Odin/roms` |
-| **SHARD STORM** (homebrew du dépôt) | casse-briques original : 12 niveaux, capsules, musique, record gardé ; [odinshrd.zip](https://github.com/Laurent-67370/odin-android/releases/download/odin-apk/odinshrd.zip) dans `Odin/roms` |
-| **GLOWBUG GARDEN** (homebrew du dépôt) | poursuite dans un labyrinthe, originale : une luciole, trois scarabées d'ombre, quatre jardins, musique, record gardé ; [odinglow.zip](https://github.com/Laurent-67370/odin-android/releases/download/odin-apk/odinglow.zip), à importer seul (sans nouvel APK) |
-| **VOLT VIPER** (homebrew du dépôt) | serpent original : 8 niveaux de murs, étincelles, musique, record gardé ; [odinvipr.zip](https://github.com/Laurent-67370/odin-android/releases/download/odin-apk/odinvipr.zip) dans `Odin/roms` |
+| Ajouter des jeux | MENU → File → Add games… : le sélecteur du téléphone, plusieurs fichiers à la fois ; chaque archive copiée dans `Odin/roms` sous le bon nom (reconnue à son contenu), puis vérifiée : « ready to play », BIOS manquant, ancienne version. Essayé sur le téléphone |
+| Jeux maison sans nouvel APK | leur zip porte leur description : l'import seul les ajoute à la liste (essayé sur le téléphone avec GLOWBUG GARDEN) |
+| **NOVA SIEGE** (homebrew du dépôt) | jeu de tir original : son, musique, record gardé, vagues variées, vaisseau-mère ; [odinhb.zip](https://github.com/Laurent-67370/odin-android/releases/download/odin-apk/odinhb.zip) |
+| **SHARD STORM** (homebrew du dépôt) | casse-briques original : 12 niveaux, capsules, raquette au doigt, musique, record gardé ; [odinshrd.zip](https://github.com/Laurent-67370/odin-android/releases/download/odin-apk/odinshrd.zip) |
+| **VOLT VIPER** (homebrew du dépôt) | serpent original : 8 niveaux de murs, étincelles, musique, record gardé ; [odinvipr.zip](https://github.com/Laurent-67370/odin-android/releases/download/odin-apk/odinvipr.zip) |
+| **GLOWBUG GARDEN** (homebrew du dépôt) | poursuite dans un labyrinthe, originale : une luciole, trois scarabées d'ombre, quatre jardins, musique, record gardé ; [odinglow.zip](https://github.com/Laurent-67370/odin-android/releases/download/odin-apk/odinglow.zip) |
 
 Connu, venant d'Odin lui-même : Air Trix peut planter à l'écran des meilleurs
 scores ([Tovarichtch/Odin#52](https://github.com/Tovarichtch/Odin/issues/52)).
@@ -227,34 +228,35 @@ par seconde** en course : la carte graphique travaille environ 9 ms sur les
 Le dossier [`homebrew/`](homebrew/) contient quatre jeux faits maison pour la
 borne SEGA Hikaru : ils démarrent par le BIOS SEGA comme de vrais jeux,
 affichent par la couche 2D, lisent les commandes par le JVS et jouent leur son
-sur l'AICA. **SHARD STORM** est un casse-briques original : douze niveaux de
-cristal, briques d'argent, d'or et bombes, six capsules (raquette large,
-multi-balles, laser, ralenti, colle, vie), musique et record gardé ;
-[odinshrd.zip](https://github.com/Laurent-67370/odin-android/releases/download/odin-apk/odinshrd.zip)
-dans `Odin/roms`.
+sur l'AICA. Tous originaux, avec leur musique composée et leur record gardé.
+
+| Jeu | Genre | Fichier |
+|---|---|---|
+| **NOVA SIEGE** | tir à écran fixe : formation d'aliens, boucliers, blindés, vaisseau-mère | [odinhb.zip](https://github.com/Laurent-67370/odin-android/releases/download/odin-apk/odinhb.zip) |
+| **SHARD STORM** | casse-briques : 12 niveaux de cristal, argent, or, bombes, 6 capsules ; la raquette suit le doigt | [odinshrd.zip](https://github.com/Laurent-67370/odin-android/releases/download/odin-apk/odinshrd.zip) |
+| **VOLT VIPER** | serpent : cellules d'énergie, étincelles, 8 niveaux de murs | [odinvipr.zip](https://github.com/Laurent-67370/odin-android/releases/download/odin-apk/odinvipr.zip) |
+| **GLOWBUG GARDEN** | poursuite dans un labyrinthe : une luciole, trois scarabées d'ombre, la fleur-lanterne, 4 jardins | [odinglow.zip](https://github.com/Laurent-67370/odin-android/releases/download/odin-apk/odinglow.zip) |
+
+Pour y jouer sur le téléphone : télécharger le zip, puis **MENU → File → Add
+games…** dans Odin (il demande aussi `hikaru.zip` et `mie.zip`, le BIOS). Le
+zip porte la description du jeu : un nouveau jeu maison, ou une nouvelle
+version, s'installe sans nouvel APK. Les commandes répondent une dizaine de
+secondes après le lancement (l'écran l'indique). Le détail de chaque jeu, et
+comment ils sont faits : [`homebrew/README.md`](homebrew/README.md).
+
+<p align="center">
+  <img src="docs/glowbug-phone.jpg" alt="GLOWBUG GARDEN sur le téléphone, importé sans nouvel APK, avec la manette tactile" width="640">
+</p>
 
 <p align="center">
   <img src="homebrew/docs/shard.png" alt="SHARD STORM : l'écran titre et le premier niveau" width="640">
-</p>
-
-Le premier jeu, **NOVA SIEGE**, est un jeu de
-tir à écran fixe original : une formation d'aliens qui marche et accélère, des
-boucliers destructibles, un pillard bonus, des vagues qui changent de forme,
-des blindés, des plongeurs, un vaisseau-mère toutes les 5 vagues, du son, de
-la musique et un record gardé.
-
-Pour y jouer sur le téléphone : télécharger
-[odinhb.zip](https://github.com/Laurent-67370/odin-android/releases/download/odin-apk/odinhb.zip)
-(publié avec l'APK, construit à chaque version) et le mettre dans
-`Odin/roms`, à côté de `hikaru.zip` et `mie.zip`. Le jeu s'appelle **Nova
-Siege** dans la liste. Les commandes répondent une dizaine de secondes après
-le lancement (l'écran l'indique).
-
-<p align="center">
-  <img src="homebrew/docs/demo.png" alt="NOVA SIEGE : l'écran titre et une partie" width="640">
   <br>
-  <img src="homebrew/docs/waves.png" alt="NOVA SIEGE : la vague des pinces avec ses blindés, et le vaisseau-mère" width="640">
+  <img src="homebrew/docs/viper.png" alt="VOLT VIPER : l'écran titre et une partie" width="640">
+  <br>
+  <img src="homebrew/docs/demo.png" alt="NOVA SIEGE : l'écran titre et une partie" width="640">
 </p>
+
+<p align="center"><em>GLOWBUG GARDEN sur le téléphone ; SHARD STORM, VOLT VIPER et NOVA SIEGE dans Odin.</em></p>
 
 ## Construire soi-même
 
