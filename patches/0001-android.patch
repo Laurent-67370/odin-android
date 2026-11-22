@@ -1,8 +1,8 @@
 diff --git a/CMakeLists.txt b/CMakeLists.txt
-index e034434..fecc13d 100644
+index e034434..2b82550 100644
 --- a/CMakeLists.txt
 +++ b/CMakeLists.txt
-@@ -16,6 +16,27 @@ include(GNUInstallDirs)
+@@ -16,6 +16,29 @@ include(GNUInstallDirs)
  option(ODIN_NATIVE "Tune for this machine's CPU (-march=native)" ON)
  option(ODIN_LTO "Link-time optimisation (-flto)" ON)
  option(ODIN_GLES "Use OpenGL ES for embedded systems" OFF)
@@ -17,6 +17,8 @@ index e034434..fecc13d 100644
 +if(IOS)
 +	set(ODIN_GLES ON CACHE BOOL "Use OpenGL ES for embedded systems" FORCE)
 +	add_compile_definitions(ODIN_IOS GLES_SILENCE_DEPRECATION)
++	# The picker of documents (UIKit), in Objective-C++
++	enable_language(OBJCXX)
 +	# Every target in C++20 (Apple's compiler would take an older one where
 +	# a target does not say)
 +	set(CMAKE_CXX_STANDARD 20)
@@ -30,7 +32,7 @@ index e034434..fecc13d 100644
  set(ODIN_OPT_FLAGS "-O3 -fomit-frame-pointer -fno-stack-protector" CACHE STRING
  	"Optimisation flags")
  set(ODIN_PGO "" CACHE STRING "Profile-guided build: generate or use")
-@@ -119,18 +140,25 @@ function(odin_library name folder target)
+@@ -119,18 +142,25 @@ function(odin_library name folder target)
  	message(STATUS "${ARGN}: from 3rdparty/${folder}")
  endfunction()
  
@@ -60,7 +62,7 @@ index e034434..fecc13d 100644
  
  set(JANSSON_BUILD_SHARED_LIBS OFF)
  set(JANSSON_EXAMPLES OFF)
-@@ -177,9 +205,19 @@ endif()
+@@ -177,9 +207,20 @@ endif()
  
  add_library(odin_deps INTERFACE)
  target_link_libraries(odin_deps INTERFACE odin_jansson odin_vulkan_headers)
@@ -71,7 +73,8 @@ index e034434..fecc13d 100644
 +	set(ODIN_GLES_HEADERS "" CACHE PATH "Khronos headers: GLES3/gl32.h, GLES2/gl2ext.h, KHR/")
 +	set(ODIN_GL_STUBS "" CACHE FILEPATH "C file of the OpenGL ES functions iOS lacks")
 +	target_include_directories(odin_deps SYSTEM INTERFACE ${ODIN_GLES_HEADERS})
-+	target_link_libraries(odin_deps INTERFACE "-framework OpenGLES" "-framework UIKit" "-framework Foundation")
++	target_link_libraries(odin_deps INTERFACE "-framework OpenGLES" "-framework UIKit" "-framework Foundation"
++		"-framework UniformTypeIdentifiers")
 +	set(HOST_WARN_FLAGS -Wno-sign-conversion)
 +elseif(APPLE)
  	target_link_libraries(odin_deps INTERFACE odin_glew "-framework OpenGL")
@@ -81,7 +84,7 @@ index e034434..fecc13d 100644
  elseif(UNIX AND ODIN_GLES)
  	odin_system_only(gles glesv2)
  	odin_system_only(x11 x11)
-@@ -221,8 +259,8 @@ set(ODIN_SOURCES
+@@ -221,8 +262,8 @@ set(ODIN_SOURCES
  	host/ui/folder_dialog.cpp host/ui/pad_view.cpp
  	host/ui/pad_drawings.cpp host/ui/pad_drawings_al2009man.cpp
  	host/ui/gun_drawings.cpp
@@ -92,7 +95,7 @@ index e034434..fecc13d 100644
  	host/input/pointers.cpp host/input/wheel_force.cpp host/input/gun_serial.cpp
  	host/input/evdev.cpp host/input/rawinput.cpp
  	host/input/outputs_network.cpp host/input/sockets.cpp
-@@ -312,7 +350,15 @@ set_source_files_properties(src/miniz/miniz.c PROPERTIES COMPILE_DEFINITIONS USE
+@@ -312,7 +353,15 @@ set_source_files_properties(src/miniz/miniz.c PROPERTIES COMPILE_DEFINITIONS USE
  set_source_files_properties(src/odin/host/app/zip_crc.cpp PROPERTIES
  	COMPILE_OPTIONS "-isystem;${CMAKE_SOURCE_DIR}/src/miniz")
  
@@ -109,7 +112,7 @@ index e034434..fecc13d 100644
  set(GLSL ${CMAKE_SOURCE_DIR}/src/odin/host/gfx/glsl)
  set(SPIRV_DIR ${CMAKE_BINARY_DIR}/spirv)
  file(MAKE_DIRECTORY ${SPIRV_DIR}/glsl)
-@@ -324,10 +370,10 @@ foreach(shader whole_picture.vert blend.frag compose.vert compose.frag present.f
+@@ -324,10 +373,10 @@ foreach(shader whole_picture.vert blend.frag compose.vert compose.frag present.f
  	string(REGEX REPLACE ".*\\." "" stage ${shader})
  	set(out ${SPIRV_DIR}/glsl/${shader}.spv)
  	if(shader STREQUAL "sort.frag")
@@ -122,7 +125,7 @@ index e034434..fecc13d 100644
  		set(inputs ${GLSL}/${shader})
  	endif()
  	add_custom_command(OUTPUT ${out}
-@@ -337,13 +383,13 @@ foreach(shader whole_picture.vert blend.frag compose.vert compose.frag present.f
+@@ -337,13 +386,13 @@ foreach(shader whole_picture.vert blend.frag compose.vert compose.frag present.f
  endforeach()
  set(out ${SPIRV_DIR}/glsl/mesh_collect.frag.spv)
  add_custom_command(OUTPUT ${out}
@@ -138,7 +141,7 @@ index e034434..fecc13d 100644
  		${GLSLANG} ${out} ${GLSL}/pmx.frag
  	DEPENDS ${GLSL}/pmx.frag VERBATIM)
  list(APPEND SPIRV ${out})
-@@ -355,14 +401,14 @@ foreach(variant list native_list)
+@@ -355,14 +404,14 @@ foreach(variant list native_list)
  		set(defines "echo '#define NATIVE 1'; echo '#define LIST 1'")
  	endif()
  	add_custom_command(OUTPUT ${out}
@@ -155,7 +158,7 @@ index e034434..fecc13d 100644
  		${GLSLANG} ${out} ${GLSL}/mesh.frag
  	DEPENDS ${GLSL}/mesh.frag VERBATIM)
  list(APPEND SPIRV ${out})
-@@ -429,8 +475,27 @@ set_source_files_properties(src/odin/host/app/rom_files.cpp PROPERTIES
+@@ -429,8 +478,28 @@ set_source_files_properties(src/odin/host/app/rom_files.cpp PROPERTIES
  set_source_files_properties(src/odin/host/gfx/host_graphics_vk.cpp PROPERTIES
  	COMPILE_DEFINITIONS "${VULKAN_FLAGS}")
  
@@ -168,7 +171,7 @@ index e034434..fecc13d 100644
 +	# Pages of 16 KB (Android 15 and later)
 +	target_link_options(odin PRIVATE -Wl,-z,max-page-size=16384)
 +elseif(IOS)
-+	add_executable(odin MACOSX_BUNDLE ${ODIN_SOURCES} ${ODIN_GL_STUBS}
++	add_executable(odin MACOSX_BUNDLE ${ODIN_SOURCES} ${ODIN_GL_STUBS} src/odin/host/ui/folder_dialog_ios.mm
 +		$<TARGET_OBJECTS:odin_imgui> $<TARGET_OBJECTS:odin_archive> $<TARGET_OBJECTS:odin_embedded>)
 +	set_target_properties(odin PROPERTIES OUTPUT_NAME Odin
 +		MACOSX_BUNDLE_INFO_PLIST ${CMAKE_SOURCE_DIR}/dist/ios/Info.plist.in
@@ -178,6 +181,7 @@ index e034434..fecc13d 100644
 +		XCODE_ATTRIBUTE_CODE_SIGNING_ALLOWED NO)
 +	# MoltenVK.framework in the bundle's Frameworks, found by SDL
 +	target_link_options(odin PRIVATE -Wl,-rpath,@executable_path/Frameworks)
++	set_source_files_properties(src/odin/host/ui/folder_dialog_ios.mm PROPERTIES COMPILE_OPTIONS -fobjc-arc)
 +else()
 +	add_executable(odin ${ODIN_SOURCES}
 +		$<TARGET_OBJECTS:odin_imgui> $<TARGET_OBJECTS:odin_archive> $<TARGET_OBJECTS:odin_embedded>)
@@ -185,7 +189,7 @@ index e034434..fecc13d 100644
  set_target_properties(odin PROPERTIES CXX_STANDARD 20 CXX_STANDARD_REQUIRED ON CXX_EXTENSIONS OFF
  	RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin)
  target_include_directories(odin PRIVATE src)
-@@ -494,7 +559,7 @@ foreach(glsl ${FILTER_GLSL})
+@@ -494,7 +563,7 @@ foreach(glsl ${FILTER_GLSL})
  endforeach()
  add_custom_target(spirv ALL DEPENDS ${FILTER_SPIRV})
  
@@ -505,10 +509,10 @@ index 72cd8ab..64c7bf0 100644
  	std::optional<Game> load_game(RomFiles &files, const std::string &name) const;
 diff --git a/src/odin/host/app/import_games.cpp b/src/odin/host/app/import_games.cpp
 new file mode 100644
-index 0000000..84c55d2
+index 0000000..59efddd
 --- /dev/null
 +++ b/src/odin/host/app/import_games.cpp
-@@ -0,0 +1,358 @@
+@@ -0,0 +1,359 @@
 +/*
 + *  ██████╗ ██████╗ ██╗███╗   ██╗
 + * ██╔═══██╗██╔══██╗██║████╗  ██║
@@ -612,7 +616,8 @@ index 0000000..84c55d2
 +bool
 +copy_to(const std::string &address, const std::string &path)
 +{
-+	const std::string from = address.rfind("file://", 0) == 0 ? address.substr(7) : address;
++	/* file://: a path, its spaces and the like written %20 (iOS) */
++	const std::string from = address.rfind("file://", 0) == 0 ? decoded(address.substr(7)) : address;
 +	SDL_IOStream *const in = SDL_IOFromFile(from.c_str(), "rb");
 +
 +	if (!in)
@@ -934,7 +939,7 @@ index 0000000..5c437f3
 +
 +#endif /* ODIN_IMPORT_GAMES_HPP */
 diff --git a/src/odin/host/app/library.cpp b/src/odin/host/app/library.cpp
-index 9d6ca81..e2bbd75 100644
+index 9d6ca81..5a6b3f7 100644
 --- a/src/odin/host/app/library.cpp
 +++ b/src/odin/host/app/library.cpp
 @@ -29,6 +29,7 @@
@@ -972,7 +977,7 @@ index 9d6ca81..e2bbd75 100644
  				std::string note;
  
  				if (const std::optional<FolderDialog::Answer> archive = menus.take_folder()) {
-+#if defined(__ANDROID__)
++#if defined(ODIN_PHONE)
 +					/* Archives added to the games: the library looks again */
 +					if (!archive->error.empty() && archive->folder.empty()) {
 +						say(archive->error);
@@ -1003,7 +1008,7 @@ index c859303..8e88cb5 100644
                 const std::string &failed);
  
 diff --git a/src/odin/host/app/main.cpp b/src/odin/host/app/main.cpp
-index 1a4e66f..c6197ec 100644
+index 1a4e66f..b3f9e3d 100644
 --- a/src/odin/host/app/main.cpp
 +++ b/src/odin/host/app/main.cpp
 @@ -25,7 +25,9 @@
@@ -1151,8 +1156,8 @@ index 1a4e66f..c6197ec 100644
  		std::fprintf(stderr, "ERROR: failed to load the game list\n");
  		return 1;
  	}
-+#if defined(__ANDROID__)
-+	/* The homebrew games imported, which the APK's list does not hold */
++#if defined(ODIN_PHONE)
++	/* The homebrew games imported, which the app's list does not hold */
 +	{
 +		odin::RomFiles files(options.rom_path, options.bios_path);
 +
@@ -1206,7 +1211,7 @@ index 31918b5..3ac4953 100644
  #else
  inline constexpr DisplayApi API = DisplayApi::OPENGL;
 diff --git a/src/odin/host/app/session.cpp b/src/odin/host/app/session.cpp
-index 094c084..3a2103b 100644
+index 094c084..8a36b32 100644
 --- a/src/odin/host/app/session.cpp
 +++ b/src/odin/host/app/session.cpp
 @@ -26,6 +26,8 @@
@@ -1233,7 +1238,7 @@ index 094c084..3a2103b 100644
  	std::string note;
  
  	if (const std::optional<FolderDialog::Answer> archive = m_menus.take_folder()) {
-+#if defined(__ANDROID__)
++#if defined(ODIN_PHONE)
 +		/* Archives added to the games, for the library */
 +		if (!archive->error.empty() && archive->folder.empty()) {
 +			say(archive->error);
@@ -3824,16 +3829,19 @@ index 2d4b1b2..418c619 100644
  		return 0;
  	const VkCommandBuffer cb = m_card.commands();
 diff --git a/src/odin/host/ui/folder_dialog.cpp b/src/odin/host/ui/folder_dialog.cpp
-index b1bc982..a96e26d 100644
+index b1bc982..4e77d7a 100644
 --- a/src/odin/host/ui/folder_dialog.cpp
 +++ b/src/odin/host/ui/folder_dialog.cpp
-@@ -24,7 +24,15 @@
+@@ -24,7 +24,18 @@
  
  #include "odin/host/ui/folder_dialog.hpp"
  
 +#if defined(__ANDROID__)
 +#include <SDL3/SDL_system.h>
 +#include <jni.h>
++#endif
++#if defined(ODIN_IOS)
++#include "odin/host/ui/folder_dialog_ios.hpp"
 +#endif
 +
 +#include <cstring>
@@ -3843,7 +3851,7 @@ index b1bc982..a96e26d 100644
  #include <mutex>
  #include <system_error>
  #include <utility>
-@@ -48,7 +56,7 @@ struct Asked {
+@@ -48,7 +59,7 @@ struct Asked {
  };
  
  /* Read by the picker until it answers */
@@ -3852,7 +3860,7 @@ index b1bc982..a96e26d 100644
  
  /* Where the picker opens: the folder when it is there */
  const char *
-@@ -81,6 +89,35 @@ answered(void *userdata, const char *const *files, int)
+@@ -81,6 +92,38 @@ answered(void *userdata, const char *const *files, int)
  	SDL_PushEvent(&event);
  }
  
@@ -3860,8 +3868,11 @@ index b1bc982..a96e26d 100644
 +/* The homebrew games asked of the activity, until it answers */
 +std::mutex g_homebrew_mutex;
 +Asked *g_homebrew = nullptr;
++#endif
 +
-+/* Every file chosen, one a line (content:// addresses) */
++#if defined(ODIN_PHONE)
++/* Every file chosen, one a line (content:// addresses on Android, file://
++ * on iOS) */
 +void SDLCALL
 +answered_all(void *userdata, const char *const *files, int)
 +{
@@ -3888,7 +3899,7 @@ index b1bc982..a96e26d 100644
  } /* namespace */
  
  FolderDialog::FolderDialog() : m_slot(std::make_shared<Slot>())
-@@ -100,6 +137,76 @@ FolderDialog::start()
+@@ -100,6 +143,76 @@ FolderDialog::start()
  	return true;
  }
  
@@ -3965,15 +3976,33 @@ index b1bc982..a96e26d 100644
  void
  FolderDialog::ask(SDL_Window *window, const std::string &from, int asked)
  {
-@@ -113,6 +220,7 @@ FolderDialog::ask_archive(SDL_Window *window, const std::string &from, int asked
+@@ -107,12 +220,25 @@ FolderDialog::ask(SDL_Window *window, const std::string &from, int asked)
+ 		SDL_ShowOpenFolderDialog(answered, new Asked{ m_slot, asked }, window, start_at(from), false);
+ }
+ 
++#if defined(ODIN_IOS)
++/* iOS: the picker of documents, several archives at once, copied to the
++ * folder of the games (import_games), as on Android */
++void
++FolderDialog::ask_archive(SDL_Window *window, const std::string &from, int asked)
++{
++	(void)from;
++	if (start())
++		pick_archives(window, answered_all, new Asked{ m_slot, asked });
++}
++#else
+ void
+ FolderDialog::ask_archive(SDL_Window *window, const std::string &from, int asked)
+ {
  	if (start())
  		SDL_ShowOpenFileDialog(answered, new Asked{ m_slot, asked }, window, ARCHIVES, 1, start_at(from), false);
  }
 +#endif
++#endif
  
  bool
  FolderDialog::open() const
-@@ -137,3 +245,41 @@ FolderDialog::answer()
+@@ -137,3 +263,41 @@ FolderDialog::answer()
  }
  
  } /* namespace odin */
@@ -4031,6 +4060,172 @@ index 01c47b0..ecac89a 100644
  	bool open() const;
  	/* The event that says the answer has come, and the answer, once */
  	Uint32 event() const;
+diff --git a/src/odin/host/ui/folder_dialog_ios.hpp b/src/odin/host/ui/folder_dialog_ios.hpp
+new file mode 100644
+index 0000000..2fb9e0a
+--- /dev/null
++++ b/src/odin/host/ui/folder_dialog_ios.hpp
+@@ -0,0 +1,43 @@
++/*
++ *  ██████╗ ██████╗ ██╗███╗   ██╗
++ * ██╔═══██╗██╔══██╗██║████╗  ██║
++ * ██║   ██║██║  ██║██║██╔██╗ ██║
++ * ██║   ██║██║  ██║██║██║╚██╗██║
++ * ╚██████╔╝██████╔╝██║██║ ╚████║
++ *  ╚═════╝ ╚═════╝ ╚═╝╚═╝  ╚═══╝
++ *
++ * Copyright (C) 2026 Réda Chérif-Touil
++ *
++ * This program is free software: you can redistribute it and/or modify
++ * it under the terms of the GNU General Public License as published by
++ * the Free Software Foundation, either version 3 of the License, or
++ * (at your option) any later version.
++ *
++ * This program is distributed in the hope that it will be useful,
++ * but WITHOUT ANY WARRANTY; without even the implied warranty of
++ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
++ * GNU General Public License for more details.
++ *
++ * You should have received a copy of the GNU General Public License
++ * along with this program.  If not, see <http://www.gnu.org/licenses/>.
++ */
++
++#ifndef ODIN_FOLDER_DIALOG_IOS_HPP
++#define ODIN_FOLDER_DIALOG_IOS_HPP
++
++#include <SDL3/SDL_video.h>
++
++namespace odin {
++
++/* As SDL_DialogFileCallback: the files chosen (file:// addresses, ended by
++ * a null), none when the picker was closed, null on an error */
++using PickedArchives = void (*)(void *userdata, const char *const *files, int filter);
++
++/* iOS: the picker of documents over `window`, several archives at once,
++ * each copied by iOS to the app's temporary folder; `done` called once,
++ * on the main thread */
++void pick_archives(SDL_Window *window, PickedArchives done, void *userdata);
++
++} /* namespace odin */
++
++#endif /* ODIN_FOLDER_DIALOG_IOS_HPP */
+diff --git a/src/odin/host/ui/folder_dialog_ios.mm b/src/odin/host/ui/folder_dialog_ios.mm
+new file mode 100644
+index 0000000..4f055de
+--- /dev/null
++++ b/src/odin/host/ui/folder_dialog_ios.mm
+@@ -0,0 +1,111 @@
++/*
++ *  ██████╗ ██████╗ ██╗███╗   ██╗
++ * ██╔═══██╗██╔══██╗██║████╗  ██║
++ * ██║   ██║██║  ██║██║██╔██╗ ██║
++ * ██║   ██║██║  ██║██║██║╚██╗██║
++ * ╚██████╔╝██████╔╝██║██║ ╚████║
++ *  ╚═════╝ ╚═════╝ ╚═╝╚═╝  ╚═══╝
++ *
++ * Copyright (C) 2026 Réda Chérif-Touil
++ *
++ * This program is free software: you can redistribute it and/or modify
++ * it under the terms of the GNU General Public License as published by
++ * the Free Software Foundation, either version 3 of the License, or
++ * (at your option) any later version.
++ *
++ * This program is distributed in the hope that it will be useful,
++ * but WITHOUT ANY WARRANTY; without even the implied warranty of
++ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
++ * GNU General Public License for more details.
++ *
++ * You should have received a copy of the GNU General Public License
++ * along with this program.  If not, see <http://www.gnu.org/licenses/>.
++ */
++
++/* iOS: the archives to add to the games chosen in the picker of documents
++ * (the Files app's places, iCloud too), several at once; iOS copies each to
++ * the app's temporary folder, whose file:// addresses are answered, one a
++ * line, as Android's picker answers. SDL has no picker on iOS. */
++
++#include "odin/host/ui/folder_dialog_ios.hpp"
++
++#import <UIKit/UIKit.h>
++#import <UniformTypeIdentifiers/UniformTypeIdentifiers.h>
++
++#include <SDL3/SDL_properties.h>
++#include <SDL3/SDL_video.h>
++
++#include <string>
++#include <vector>
++
++@interface OdinPicker : NSObject <UIDocumentPickerDelegate>
++@property(nonatomic, assign) odin::PickedArchives done;
++@property(nonatomic, assign) void *userdata;
++@end
++
++namespace {
++/* The picker being shown, kept until it answers (the view controller holds
++ * its delegate weakly) */
++OdinPicker *g_picker = nil;
++
++void
++answer(OdinPicker *picker, NSArray<NSURL *> *urls)
++{
++	std::vector<std::string> lines;
++	std::vector<const char *> files;
++
++	for (NSURL *url in urls)
++		lines.push_back(url.absoluteString.UTF8String);
++	for (const std::string &line : lines)
++		files.push_back(line.c_str());
++	files.push_back(nullptr);
++	picker.done(picker.userdata, files.data(), 0);
++	g_picker = nil;
++}
++} /* namespace */
++
++@implementation OdinPicker
++- (void)documentPicker:(UIDocumentPickerViewController *)controller didPickDocumentsAtURLs:(NSArray<NSURL *> *)urls
++{
++	(void)controller;
++	answer(self, urls);
++}
++
++- (void)documentPickerWasCancelled:(UIDocumentPickerViewController *)controller
++{
++	(void)controller;
++	answer(self, @[]);
++}
++@end
++
++namespace odin {
++
++void
++pick_archives(SDL_Window *window, PickedArchives done, void *userdata)
++{
++	UIWindow *const shown = (__bridge UIWindow *)SDL_GetPointerProperty(
++		SDL_GetWindowProperties(window), SDL_PROP_WINDOW_UIKIT_WINDOW_POINTER, nullptr);
++	UIViewController *top = shown.rootViewController;
++
++	while (top.presentedViewController)
++		top = top.presentedViewController;
++	if (!top) {
++		SDL_SetError("no view to show the picker of documents from");
++		done(userdata, nullptr, 0);
++		return;
++	}
++
++	/* Any file: a .7z is no kind iOS knows */
++	UIDocumentPickerViewController *const picker =
++		[[UIDocumentPickerViewController alloc] initForOpeningContentTypes:@[ UTTypeItem ] asCopy:YES];
++	OdinPicker *const delegate = [[OdinPicker alloc] init];
++
++	delegate.done = done;
++	delegate.userdata = userdata;
++	g_picker = delegate;
++	picker.delegate = delegate;
++	picker.allowsMultipleSelection = YES;
++	[top presentViewController:picker animated:YES completion:nil];
++}
++
++} /* namespace odin */
 diff --git a/src/odin/host/ui/menu.cpp b/src/odin/host/ui/menu.cpp
 index 0678015..54ad0d8 100644
 --- a/src/odin/host/ui/menu.cpp
@@ -4191,7 +4386,7 @@ index d908c1f..4db9e13 100644
  	const MenuPalette *m_palette = &RUNASTEINN;
  	/* The frame the gamepad moves on the page */
 diff --git a/src/odin/host/ui/menu_bar.cpp b/src/odin/host/ui/menu_bar.cpp
-index 0282be6..b461f21 100644
+index 0282be6..af787b3 100644
 --- a/src/odin/host/ui/menu_bar.cpp
 +++ b/src/odin/host/ui/menu_bar.cpp
 @@ -45,6 +45,7 @@
@@ -4237,17 +4432,19 @@ index 0282be6..b461f21 100644
  	ImGui::Render();
  }
  
-@@ -333,8 +343,17 @@ Menu::bar_file(BarItems &b)
+@@ -333,8 +343,19 @@ Menu::bar_file(BarItems &b)
  {
  	BarState &state = b.state;
  
-+#if defined(__ANDROID__)
-+	/* The picker of the phone: the archives copied to Odin/roms */
++#if defined(ODIN_PHONE)
++	/* The picker of the phone: the archives copied to the folder roms */
 +	if (item("Add games..."))
 +		b.ask(Ask::OPEN);
++#if defined(__ANDROID__)
 +	/* The homebrew games published with the APK, downloaded and added */
 +	if (item("Get homebrew games..."))
 +		b.ask(Ask::HOMEBREW);
++#endif
 +#else
  	if (item("Open game..."))
  		b.ask(Ask::OPEN);
