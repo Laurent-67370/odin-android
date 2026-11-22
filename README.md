@@ -80,6 +80,13 @@ pour construire et un iPhone pour tester.
    qu'il rend jouables, et ce qui n'est pas un jeu connu d'Odin. Copier les
    archives à la main dans `Odin/roms` marche toujours.
 
+   Les jeux maison du dépôt portent leur description dans leur zip
+   (`odin-game.json`) : l'import les ajoute à la liste des jeux, et à
+   `Odin/odin-games-homebrew.json` pour les lancements suivants. Un nouveau jeu
+   maison, ou une nouvelle version, s'installe donc par l'import seul, sans
+   nouvel APK. Seuls des jeux marqués homebrew sont pris ainsi, jamais à la
+   place d'un jeu de la liste d'Odin.
+
 Il faut un téléphone ARM64. Odin dessine par défaut avec **Vulkan** (conseillé) ;
 OpenGL ES 3.2 reste au choix, page Display (option « API »). L'émulation
 Hikaru est lourde : un téléphone haut de gamme récent est conseillé.
