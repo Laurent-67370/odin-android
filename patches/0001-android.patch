@@ -4618,25 +4618,98 @@ index cb9126f..fcbe8ea 100644
  	/* False, with the reason on stderr, if the state could not be written
  	 * or is not one of this game and build; the board is then as after a
 diff --git a/src/odin/machine/core/host_code.cpp b/src/odin/machine/core/host_code.cpp
-index 6d950a3..4fda6ea 100644
+index 6d950a3..3d72217 100644
 --- a/src/odin/machine/core/host_code.cpp
 +++ b/src/odin/machine/core/host_code.cpp
-@@ -37,6 +37,14 @@
+@@ -36,6 +36,20 @@
+ #include <libkern/OSCacheControl.h>
  #include <pthread.h>
  #endif
- #endif
++#if defined(ODIN_IOS)
++#include <cstdio>
++#include <mach/mach.h>
++#include <unistd.h>
++#endif
++#endif
 +/* macOS: the code memory MAP_JIT, written and run in turn
 + * (pthread_jit_write_protect_np). iOS has neither: there the memory is
-+ * read, write and execute at once, which iOS grants only to an app whose JIT
-+ * a debugger enabled (StikDebug); otherwise it cannot be had, and Odin says
-+ * so. */
++ * mapped twice, once to run (read, execute), once to write (read, write),
++ * as iOS emulators do; iOS allows it only once a debugger has enabled the
++ * app's JIT (StikDebug). Otherwise there is no host code, and the CPUs run
++ * their decoded instructions, slower. */
 +#if defined(__APPLE__) && defined(ODIN_HOST_AARCH64) && !defined(ODIN_IOS)
 +#define ODIN_MAC_JIT 1
-+#endif
+ #endif
  
  namespace odin {
+@@ -51,18 +65,71 @@ constexpr uintptr_t REACH = 2048u << 20;
+ constexpr uintptr_t REACH = 128u << 20;
+ #endif
  
-@@ -62,7 +70,7 @@ uint8_t *take(uintptr_t at, uint32_t size)
+-uint8_t *take(uintptr_t at, uint32_t size)
++#if defined(ODIN_IOS)
++/* Whether a debugger enabled the JIT of the app (CS_DEBUGGED) */
++extern "C" int csops(pid_t pid, unsigned int ops, void *useraddr, size_t usersize);
++
++bool jit_enabled()
++{
++	constexpr unsigned int CS_OPS_STATUS = 0;
++	constexpr uint32_t CS_DEBUGGED = 0x10000000;
++	uint32_t flags = 0;
++	const bool on = csops(getpid(), CS_OPS_STATUS, &flags, sizeof(flags)) == 0 && (flags & CS_DEBUGGED);
++
++	std::fprintf(stderr, on ? "JIT: on (the app's JIT enabled by a debugger)\n"
++	                        : "JIT: off (enable it with StikDebug): the CPUs run their decoded instructions, slower\n");
++	return on;
++}
++
++/* The memory to run at `at` (or anywhere), and its second mapping to
++ * write in `write` */
++uint8_t *take(uintptr_t at, uint32_t size, uint8_t *&write)
++{
++	static const bool jit = jit_enabled();
++
++	if (!jit) {
++		return nullptr;
++	}
++	void *want = reinterpret_cast<void *>(at);
++	void *got = mmap(want, size, PROT_READ | PROT_EXEC, MAP_PRIVATE | MAP_ANONYMOUS, -1, 0);
++
++	if (got == MAP_FAILED) {
++		return nullptr;
++	}
++	if (at && got != want) {
++		munmap(got, size);
++		return nullptr;
++	}
++	vm_address_t alias = 0;
++	vm_prot_t now, most;
++
++	if (vm_remap(mach_task_self(), &alias, size, 0, VM_FLAGS_ANYWHERE, mach_task_self(),
++	             reinterpret_cast<vm_address_t>(got), false, &now, &most, VM_INHERIT_NONE) != KERN_SUCCESS) {
++		munmap(got, size);
++		return nullptr;
++	}
++	if (mprotect(reinterpret_cast<void *>(alias), size, PROT_READ | PROT_WRITE) != 0) {
++		vm_deallocate(mach_task_self(), alias, size);
++		munmap(got, size);
++		return nullptr;
++	}
++	write = reinterpret_cast<uint8_t *>(alias);
++	return static_cast<uint8_t *>(got);
++}
++#else
++uint8_t *take(uintptr_t at, uint32_t size, uint8_t *&write)
+ {
+ #if defined(_WIN32)
+-	return static_cast<uint8_t *>(VirtualAlloc(reinterpret_cast<void *>(at), size, MEM_RESERVE | MEM_COMMIT,
+-	                                           PAGE_EXECUTE_READWRITE));
++	write = static_cast<uint8_t *>(VirtualAlloc(reinterpret_cast<void *>(at), size, MEM_RESERVE | MEM_COMMIT,
++	                                            PAGE_EXECUTE_READWRITE));
++	return write;
+ #else
+ #if defined(MAP_FIXED_NOREPLACE)
+ 	const int fixed = MAP_FIXED_NOREPLACE;
  #else
  	const int fixed = 0;
  #endif
@@ -4645,7 +4718,73 @@ index 6d950a3..4fda6ea 100644
  	const int jit = MAP_JIT;
  #else
  	const int jit = 0;
-@@ -130,7 +138,7 @@ HostCode::~HostCode()
+@@ -78,38 +145,44 @@ uint8_t *take(uintptr_t at, uint32_t size)
+ 		munmap(got, size);
+ 		return nullptr;
+ 	}
+-	return static_cast<uint8_t *>(got);
++	write = static_cast<uint8_t *>(got);
++	return write;
+ #endif
+ }
++#endif
+ 
+-void give_back(uint8_t *code, uint32_t size)
++void give_back(uint8_t *code, uint8_t *write, uint32_t size)
+ {
+ #if defined(_WIN32)
++	(void)write;
+ 	(void)size;
+ 	VirtualFree(code, 0, MEM_RELEASE);
+ #else
++	if (write != code) {
++		munmap(write, size);
++	}
+ 	munmap(code, size);
+ #endif
+ }
+ 
+ /* Memory the host may run, within reach of a direct call from the code of
+  * the program when there is some free. */
+-uint8_t *take_near(uint32_t size)
++uint8_t *take_near(uint32_t size, uint8_t *&write)
+ {
+ 	const uintptr_t step = REACH / 32;
+-	const uintptr_t here = reinterpret_cast<uintptr_t>(&take) & ~(step - 1);
++	const uintptr_t here = reinterpret_cast<uintptr_t>(&give_back) & ~(step - 1);
+ 
+ 	for (uintptr_t n = 1; n < 24; n++) {
+-		if (uint8_t *code = take(here + n * step, size)) {
++		if (uint8_t *code = take(here + n * step, size, write)) {
+ 			return code;
+ 		}
+ 		if (here > n * step) {
+-			if (uint8_t *code = take(here - n * step, size)) {
++			if (uint8_t *code = take(here - n * step, size, write)) {
+ 				return code;
+ 			}
+ 		}
+ 	}
+-	return take(0, size);
++	return take(0, size, write);
+ }
+ 
+ } /* namespace */
+@@ -119,18 +192,19 @@ HostCode::HostCode(uint32_t size)
+ #if defined(ODIN_HOST_AARCH64)
+ 	  m_written(0),
+ #endif
+-	  m_code(take_near(size)), m_size(size), m_used(0), m_leave(0), m_far_calls(0)
++	  m_code(nullptr), m_write(nullptr), m_size(size), m_used(0), m_leave(0), m_far_calls(0)
+ {
++	m_code = take_near(size, m_write);
+ }
+ 
+ HostCode::~HostCode()
+ {
+ 	if (m_code) {
+-		give_back(m_code, m_size);
++		give_back(m_code, m_write, m_size);
  	}
  }
  
@@ -4654,7 +4793,7 @@ index 6d950a3..4fda6ea 100644
  namespace {
  thread_local bool g_writing = false;
  }
-@@ -138,7 +146,7 @@ thread_local bool g_writing = false;
+@@ -138,7 +212,7 @@ thread_local bool g_writing = false;
  
  void HostCode::writable()
  {
@@ -4663,7 +4802,7 @@ index 6d950a3..4fda6ea 100644
  	if (!g_writing) {
  		pthread_jit_write_protect_np(0);
  		g_writing = true;
-@@ -149,7 +157,7 @@ void HostCode::writable()
+@@ -149,7 +223,7 @@ void HostCode::writable()
  void HostCode::ready() const
  {
  #if defined(ODIN_HOST_AARCH64)
@@ -4672,3 +4811,147 @@ index 6d950a3..4fda6ea 100644
  	if (g_writing) {
  		pthread_jit_write_protect_np(1);
  		g_writing = false;
+@@ -194,13 +268,13 @@ void HostCode::bytes(std::initializer_list<uint8_t> values)
+ 
+ void HostCode::word(uint32_t value)
+ {
+-	std::memcpy(m_code + m_used, &value, 4);
++	std::memcpy(m_write + m_used, &value, 4);
+ 	m_used += 4;
+ }
+ 
+ void HostCode::quad(uint64_t value)
+ {
+-	std::memcpy(m_code + m_used, &value, 8);
++	std::memcpy(m_write + m_used, &value, 8);
+ 	m_used += 8;
+ }
+ 
+@@ -220,7 +294,7 @@ void HostCode::bind(Jump jump)
+ {
+ 	const uint32_t distance = m_used - (jump.from + 4);
+ 
+-	std::memcpy(m_code + jump.from, &distance, 4);
++	std::memcpy(m_write + jump.from, &distance, 4);
+ }
+ 
+ void HostCode::jump_back(uint32_t place)
+@@ -352,7 +426,7 @@ void HostCode::way_out()
+ 
+ #if !defined(ODIN_HOST_X86_64) && !defined(ODIN_HOST_AARCH64) /* a host this file does not write code for */
+ 
+-HostCode::HostCode(uint32_t size) : m_code(nullptr), m_size(size), m_used(0), m_leave(0), m_far_calls(0) {}
++HostCode::HostCode(uint32_t size) : m_code(nullptr), m_write(nullptr), m_size(size), m_used(0), m_leave(0), m_far_calls(0) {}
+ HostCode::~HostCode() = default;
+ void HostCode::bind(Jump) {}
+ void HostCode::jump_back(uint32_t) {}
+diff --git a/src/odin/machine/core/host_code.hpp b/src/odin/machine/core/host_code.hpp
+index d6fcc42..7b24ac5 100644
+--- a/src/odin/machine/core/host_code.hpp
++++ b/src/odin/machine/core/host_code.hpp
+@@ -95,7 +95,7 @@ protected:
+ 	static constexpr uint8_t ARG[4] = { RDI, RSI, RDX, RCX };
+ #endif
+ 
+-	void byte(uint8_t value) { m_code[m_used++] = value; }
++	void byte(uint8_t value) { m_write[m_used++] = value; }
+ 	void bytes(std::initializer_list<uint8_t> values);
+ 	void word(uint32_t value);
+ 	void quad(uint64_t value);
+@@ -176,7 +176,10 @@ protected:
+ 	mutable uint32_t m_written;
+ #endif
+ 
+-	uint8_t *m_code;
++	/* The code is run at m_code and written at m_write: the same memory,
++	 * but on iOS, which never lets memory be written and run at once, a
++	 * second mapping of it that is only written */
++	uint8_t *m_code, *m_write;
+ 	uint32_t m_size, m_used;
+ 	uint32_t m_leave;	/* place of the way back to C++ */
+ 	uint64_t m_far_calls;
+diff --git a/src/odin/machine/core/host_code_arm64.cpp b/src/odin/machine/core/host_code_arm64.cpp
+index d346d7f..28d83ec 100644
+--- a/src/odin/machine/core/host_code_arm64.cpp
++++ b/src/odin/machine/core/host_code_arm64.cpp
+@@ -36,7 +36,7 @@ using namespace arm64;
+ 
+ void HostCode::emit(uint32_t instruction)
+ {
+-	std::memcpy(m_code + m_used, &instruction, 4);
++	std::memcpy(m_write + m_used, &instruction, 4);
+ 	m_used += 4;
+ }
+ 
+@@ -75,13 +75,13 @@ bool near19(int64_t distance)
+ 
+ void HostCode::bind(Jump jump)
+ {
+-	patch(m_code, jump.from, m_used);
++	patch(m_write, jump.from, m_used);
+ }
+ 
+ void HostCode::jump_back(uint32_t place)
+ {
+ 	emit(B);
+-	patch(m_code, m_used - 4, place);
++	patch(m_write, m_used - 4, place);
+ }
+ 
+ void HostCode::jump_to(uint32_t place)
+@@ -95,7 +95,7 @@ void HostCode::jump_to_if(Cond cond, uint32_t place)
+ 
+ 	if (near19(distance)) {
+ 		emit(B_COND | cond);
+-		patch(m_code, m_used - 4, place);
++		patch(m_write, m_used - 4, place);
+ 	} else {
+ 		emit(B_COND | (cond ^ 1) | (2 << 5));		/* over the branch */
+ 		jump_back(place);
+@@ -108,7 +108,7 @@ void HostCode::jump_to_if_zero(uint8_t reg, bool zero, uint32_t place)
+ 
+ 	if (near19(distance)) {
+ 		emit((zero ? CBZ : CBNZ) | WIDE | reg);
+-		patch(m_code, m_used - 4, place);
++		patch(m_write, m_used - 4, place);
+ 	} else {
+ 		emit((zero ? CBNZ : CBZ) | WIDE | reg | (2 << 5));
+ 		jump_back(place);
+@@ -129,7 +129,7 @@ HostCode::Jump HostCode::jump_if_zero(uint8_t reg, bool zero, bool wide)
+ 
+ void HostCode::relink(uint32_t at, uint32_t place)
+ {
+-	patch(m_code, at, place);
++	patch(m_write, at, place);
+ 	if (at < m_written) {
+ 		m_written = at;
+ 	}
+diff --git a/src/odin/machine/cpu/arm7/arm7_translate.cpp b/src/odin/machine/cpu/arm7/arm7_translate.cpp
+index 4d6fe83..59c3416 100644
+--- a/src/odin/machine/cpu/arm7/arm7_translate.cpp
++++ b/src/odin/machine/cpu/arm7/arm7_translate.cpp
+@@ -74,7 +74,10 @@ void Arm7::drop_blocks()
+ 	if (!m_host) {
+ 		return;
+ 	}
+-	m_host->clear();
++	/* No host code without memory to run it (iOS without its JIT) */
++	if (m_host->usable()) {
++		m_host->clear();
++	}
+ 	m_unlinked.clear();
+ 	for (std::unique_ptr<uint32_t[]> &page : m_blocks) {
+ 		page.reset();
+diff --git a/src/odin/machine/cpu/sh4/sh4.cpp b/src/odin/machine/cpu/sh4/sh4.cpp
+index c09412d..084d2d3 100644
+--- a/src/odin/machine/cpu/sh4/sh4.cpp
++++ b/src/odin/machine/cpu/sh4/sh4.cpp
+@@ -634,7 +634,7 @@ void Sh4::drop_blocks()
+ 	m_code_pages.clear();
+ 	std::fill(m_page_of.begin(), m_page_of.end(), 0);
+ 	std::fill(m_code_epoch.begin(), m_code_epoch.end(), 0);
+-	if (m_host) {
++	if (m_host && m_host->usable()) {
+ 		m_host->clear();
+ 	}
+ 	/* An odd PC: no block is kept for one. */
