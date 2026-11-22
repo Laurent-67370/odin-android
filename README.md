@@ -14,11 +14,15 @@ https://github.com/Laurent-67370/odin-android/releases/download/odin-apk/odin.ap
 <p align="center">
   <img src="docs/air-trix-portrait.jpg" alt="Air Trix en portrait, la manette tactile sous l'image" width="230">
   &nbsp;
-  <img src="docs/games-list.jpg" alt="La liste des jeux d'Odin sur le téléphone" width="520">
+  <img src="docs/games-list-portrait.jpg" alt="La liste des jeux en portrait : SEGA Hikaru, Gaelco, puis la rubrique Homebrew ; la version dans About" width="230">
 </p>
 
-<p align="center"><em>Star Wars Racer Arcade en course (60 images/s) ; Air Trix en portrait ; la liste des jeux, avec les quatre jeux maison.
-Captures d'un Snapdragon 8 Gen 2.</em></p>
+<p align="center">
+  <img src="docs/games-list.jpg" alt="La liste des jeux d'Odin en paysage" width="640">
+</p>
+
+<p align="center"><em>Star Wars Racer Arcade en course (60 images/s) ; Air Trix en portrait ; la liste des jeux en
+portrait, avec la rubrique HOMEBREW et la version 1.0.89 dans About, puis en paysage. Captures d'un Snapdragon 8 Gen 2.</em></p>
 
 ## État
 
@@ -41,7 +45,8 @@ s'affiche dans MENU → About et dans le titre de la publication).
 | Ajouter des jeux | MENU → File → Add games… : le sélecteur du téléphone, plusieurs fichiers à la fois ; chaque archive copiée dans `Odin/roms` sous le bon nom (reconnue à son contenu), puis vérifiée : « ready to play », BIOS manquant, ancienne version. Essayé sur le téléphone |
 | Liste des jeux | par système (SEGA Hikaru, Gaelco), puis les jeux maison dans une rubrique HOMEBREW |
 | Jeux maison sans nouvel APK | leur zip porte leur description : l'import seul les ajoute à la liste (essayé sur le téléphone avec GLOWBUG GARDEN) |
-| Télécharger les jeux maison | MENU → File → Get homebrew games… : la liste des jeux maison publiés, chacun « new », « installed » ou « update » ; ceux cochés sont téléchargés puis ajoutés comme par l'import |
+| Télécharger les jeux maison | MENU → File → Get homebrew games… : la liste des jeux maison publiés (lue sur la publication GitHub du dépôt), chacun « new », « installed » ou « update » ; ceux cochés sont téléchargés puis ajoutés comme par l'import |
+| Version | `1.0.N` dans MENU → About, dans les informations de l'app et dans le titre de la publication ; ce qui change : [CHANGELOG.md](CHANGELOG.md) |
 | **NOVA SIEGE** (homebrew du dépôt) | jeu de tir original : son, musique, record gardé, vagues variées, vaisseau-mère ; [odinhb.zip](https://github.com/Laurent-67370/odin-android/releases/download/odin-apk/odinhb.zip) |
 | **SHARD STORM** (homebrew du dépôt) | casse-briques original : 12 niveaux, capsules, raquette au doigt, musique, record gardé ; [odinshrd.zip](https://github.com/Laurent-67370/odin-android/releases/download/odin-apk/odinshrd.zip) |
 | **VOLT VIPER** (homebrew du dépôt) | serpent original : 8 niveaux de murs, étincelles, musique, record gardé ; [odinvipr.zip](https://github.com/Laurent-67370/odin-android/releases/download/odin-apk/odinvipr.zip) |
@@ -53,7 +58,16 @@ scores ([Tovarichtch/Odin#52](https://github.com/Tovarichtch/Odin/issues/52)).
 Le portage est présenté à l'auteur d'Odin dans
 [Tovarichtch/Odin#54](https://github.com/Tovarichtch/Odin/issues/54), avec un
 suivi des améliorations (manette tactile, adaptations par jeu, mémoire gardée
-en arrière-plan, homebrew).
+en arrière-plan, homebrew, import des jeux, menus pour le téléphone). Il accepte
+des pull requests à trois conditions : le modèle d'IA nommé, pas de
+bidouille (sinon une option désactivée par défaut), aucune régression. Le
+portage lui est donc proposé en petites PR, tout ce qui est propre à Android
+derrière `__ANDROID__`, avec pour chacune la preuve que le programme Linux est
+identique octet par octet avant et après. La première,
+[Tovarichtch/Odin#58](https://github.com/Tovarichtch/Odin/pull/58) (la
+compilation pour Android), attend son avis ; le workflow `upstream-check.yml`
+vérifie que chaque branche proposée compile seule pour Android
+([`upstream/`](upstream/)).
 
 **Et iOS ?** Pas pour l'instant (question posée dans
 [Tovarichtch/Odin#56](https://github.com/Tovarichtch/Odin/issues/56)). Odin n'a
@@ -93,6 +107,10 @@ pour construire et un iPhone pour tester.
    maison, ou une nouvelle version, s'installe donc par l'import seul, sans
    nouvel APK. Seuls des jeux marqués homebrew sont pris ainsi, jamais à la
    place d'un jeu de la liste d'Odin.
+
+   Les jeux maison s'installent aussi sans passer par le navigateur : **MENU →
+   File → Get homebrew games…** liste ceux qui sont publiés, dit lesquels sont
+   nouveaux ou ont une mise à jour, et installe ceux qu'on coche.
 
 Il faut un téléphone ARM64. Odin dessine par défaut avec **Vulkan** (conseillé) ;
 OpenGL ES 3.2 reste au choix, page Display (option « API »). L'émulation
