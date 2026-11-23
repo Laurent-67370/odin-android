@@ -4837,31 +4837,35 @@ index cb9126f..fcbe8ea 100644
  	/* False, with the reason on stderr, if the state could not be written
  	 * or is not one of this game and build; the board is then as after a
 diff --git a/src/odin/machine/core/host_code.cpp b/src/odin/machine/core/host_code.cpp
-index 6d950a3..3d72217 100644
+index 6d950a3..ac08953 100644
 --- a/src/odin/machine/core/host_code.cpp
 +++ b/src/odin/machine/core/host_code.cpp
-@@ -36,6 +36,20 @@
+@@ -36,6 +36,24 @@
  #include <libkern/OSCacheControl.h>
  #include <pthread.h>
  #endif
 +#if defined(ODIN_IOS)
++#include <csignal>
 +#include <cstdio>
++#include <cstdlib>
 +#include <mach/mach.h>
++#include <sys/sysctl.h>
++#include <sys/ucontext.h>
 +#include <unistd.h>
 +#endif
 +#endif
 +/* macOS: the code memory MAP_JIT, written and run in turn
 + * (pthread_jit_write_protect_np). iOS has neither: there the memory is
-+ * mapped twice, once to run (read, execute), once to write (read, write),
-+ * as iOS emulators do; iOS allows it only once a debugger has enabled the
-+ * app's JIT (StikDebug). Otherwise there is no host code, and the CPUs run
-+ * their decoded instructions, slower. */
++ * mapped twice, once to run, once to write (read, write), as iOS emulators
++ * do, once a debugger has enabled the app's JIT (StikDebug); on iOS 26 and
++ * later the memory to run comes from the debugger itself. Otherwise there
++ * is no host code, and the CPUs run their decoded instructions, slower. */
 +#if defined(__APPLE__) && defined(ODIN_HOST_AARCH64) && !defined(ODIN_IOS)
 +#define ODIN_MAC_JIT 1
  #endif
  
  namespace odin {
-@@ -51,18 +65,71 @@ constexpr uintptr_t REACH = 2048u << 20;
+@@ -51,18 +69,142 @@ constexpr uintptr_t REACH = 2048u << 20;
  constexpr uintptr_t REACH = 128u << 20;
  #endif
  
@@ -4882,24 +4886,93 @@ index 6d950a3..3d72217 100644
 +	return on;
 +}
 +
-+/* The memory to run at `at` (or anywhere), and its second mapping to
-+ * write in `write` */
++/* iOS 26 and later (TXM): memory a process maps itself never runs, even
++ * debugged. The debugger maps it: StikDebug, with its script universal.js,
++ * answers `brk #0xf00d` with x16 = 1 (prepare a region of x1 bytes at x0,
++ * null: anywhere) by the address of memory that runs, in x0
++ * (StikJIT/INTEGRATION.md). Never detached: the memory runs while the
++ * debugger stays. */
++__attribute__((noinline, naked)) void *jit26_prepare_region(void *, size_t)
++{
++	__asm__("mov x16, #1\n"
++	        "brk #0xf00d\n"
++	        "ret\n");
++}
++
++/* A brk no debugger answers stops the process (SIGTRAP): stepped over,
++ * x0 = 0, as when nothing is given */
++constexpr uint32_t BRK_F00D = 0xD43E01A0;
++
++void skip_brk(int, siginfo_t *, void *context)
++{
++	ucontext_t *const uc = static_cast<ucontext_t *>(context);
++	const uint64_t pc = uc->uc_mcontext->__ss.__pc;
++
++	if (*reinterpret_cast<const uint32_t *>(pc) != BRK_F00D)
++		std::abort();
++	uc->uc_mcontext->__ss.__pc = pc + 4;
++	uc->uc_mcontext->__ss.__x[0] = 0;
++}
++
++/* The version of iOS, 26 for 26.1 */
++int ios_major()
++{
++	char text[32] = {};
++	size_t length = sizeof(text) - 1;
++
++	return sysctlbyname("kern.osproductversion", text, &length, nullptr, 0) == 0 ? std::atoi(text) : 0;
++}
++
++/* Memory that runs, from the debugger; null when it gives none */
++uint8_t *from_debugger(uint32_t size)
++{
++	if (ios_major() < 26)
++		return nullptr;
++
++	struct sigaction skip = {}, was = {};
++
++	skip.sa_sigaction = skip_brk;
++	skip.sa_flags = SA_SIGINFO;
++	sigemptyset(&skip.sa_mask);
++	sigaction(SIGTRAP, &skip, &was);
++	void *const got = jit26_prepare_region(nullptr, size);
++	sigaction(SIGTRAP, &was, nullptr);
++
++	/* A brk not answered may leave its own encoding in x0: a page of 16 KB
++	 * the process holds, or nothing */
++	const uintptr_t at = reinterpret_cast<uintptr_t>(got);
++	vm_address_t region = at;
++	vm_size_t length = 0;
++	vm_region_basic_info_data_64_t info;
++	mach_msg_type_number_t count = VM_REGION_BASIC_INFO_COUNT_64;
++	mach_port_t object = MACH_PORT_NULL;
++
++	if (!at || (at & 0x3FFF) ||
++	    vm_region_64(mach_task_self(), &region, &length, VM_REGION_BASIC_INFO_64,
++	                 reinterpret_cast<vm_region_info_t>(&info), &count, &object) != KERN_SUCCESS ||
++	    region > at || region + length < at + size)
++		return nullptr;
++	return static_cast<uint8_t *>(got);
++}
++
++/* The memory to run (anywhere: `at` is not asked on iOS), and its second
++ * mapping to write in `write`: from the debugger on iOS 26 and later, else
++ * mapped by the process */
 +uint8_t *take(uintptr_t at, uint32_t size, uint8_t *&write)
 +{
 +	static const bool jit = jit_enabled();
 +
-+	if (!jit) {
++	if (!jit || at) {
 +		return nullptr;
 +	}
-+	void *want = reinterpret_cast<void *>(at);
-+	void *got = mmap(want, size, PROT_READ | PROT_EXEC, MAP_PRIVATE | MAP_ANONYMOUS, -1, 0);
++	void *got = from_debugger(size);
++	const bool given = got != nullptr;
 +
-+	if (got == MAP_FAILED) {
-+		return nullptr;
-+	}
-+	if (at && got != want) {
-+		munmap(got, size);
-+		return nullptr;
++	if (!given) {
++		got = mmap(nullptr, size, PROT_READ | PROT_EXEC, MAP_PRIVATE | MAP_ANONYMOUS, -1, 0);
++		if (got == MAP_FAILED) {
++			return nullptr;
++		}
 +	}
 +	vm_address_t alias = 0;
 +	vm_prot_t now, most;
@@ -4915,6 +4988,8 @@ index 6d950a3..3d72217 100644
 +		return nullptr;
 +	}
 +	write = reinterpret_cast<uint8_t *>(alias);
++	std::fprintf(stderr, "JIT: %u KB of code memory %s\n", size >> 10,
++	             given ? "from the debugger (iOS 26 and later)" : "mapped twice by the app");
 +	return static_cast<uint8_t *>(got);
 +}
 +#else
@@ -4937,7 +5012,7 @@ index 6d950a3..3d72217 100644
  	const int jit = MAP_JIT;
  #else
  	const int jit = 0;
-@@ -78,38 +145,44 @@ uint8_t *take(uintptr_t at, uint32_t size)
+@@ -78,38 +220,44 @@ uint8_t *take(uintptr_t at, uint32_t size)
  		munmap(got, size);
  		return nullptr;
  	}
@@ -4989,7 +5064,7 @@ index 6d950a3..3d72217 100644
  }
  
  } /* namespace */
-@@ -119,18 +192,19 @@ HostCode::HostCode(uint32_t size)
+@@ -119,18 +267,19 @@ HostCode::HostCode(uint32_t size)
  #if defined(ODIN_HOST_AARCH64)
  	  m_written(0),
  #endif
@@ -5012,7 +5087,7 @@ index 6d950a3..3d72217 100644
  namespace {
  thread_local bool g_writing = false;
  }
-@@ -138,7 +212,7 @@ thread_local bool g_writing = false;
+@@ -138,7 +287,7 @@ thread_local bool g_writing = false;
  
  void HostCode::writable()
  {
@@ -5021,7 +5096,7 @@ index 6d950a3..3d72217 100644
  	if (!g_writing) {
  		pthread_jit_write_protect_np(0);
  		g_writing = true;
-@@ -149,7 +223,7 @@ void HostCode::writable()
+@@ -149,7 +298,7 @@ void HostCode::writable()
  void HostCode::ready() const
  {
  #if defined(ODIN_HOST_AARCH64)
@@ -5030,7 +5105,7 @@ index 6d950a3..3d72217 100644
  	if (g_writing) {
  		pthread_jit_write_protect_np(1);
  		g_writing = false;
-@@ -194,13 +268,13 @@ void HostCode::bytes(std::initializer_list<uint8_t> values)
+@@ -194,13 +343,13 @@ void HostCode::bytes(std::initializer_list<uint8_t> values)
  
  void HostCode::word(uint32_t value)
  {
@@ -5046,7 +5121,7 @@ index 6d950a3..3d72217 100644
  	m_used += 8;
  }
  
-@@ -220,7 +294,7 @@ void HostCode::bind(Jump jump)
+@@ -220,7 +369,7 @@ void HostCode::bind(Jump jump)
  {
  	const uint32_t distance = m_used - (jump.from + 4);
  
@@ -5055,7 +5130,7 @@ index 6d950a3..3d72217 100644
  }
  
  void HostCode::jump_back(uint32_t place)
-@@ -352,7 +426,7 @@ void HostCode::way_out()
+@@ -352,7 +501,7 @@ void HostCode::way_out()
  
  #if !defined(ODIN_HOST_X86_64) && !defined(ODIN_HOST_AARCH64) /* a host this file does not write code for */
  

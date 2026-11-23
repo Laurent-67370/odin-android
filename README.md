@@ -78,7 +78,9 @@ jeux marchent, un jeu se charge et démarre, puis l'app se ferme au bout d'une
 dizaine de secondes. Piste principale : le JIT. Odin recompile le SH-4 et
 l'ARM7 en ARM64, ce qu'iOS n'accorde qu'à une app dont un débogueur a activé le
 JIT ; sa mémoire de code y est projetée deux fois (une vue pour écrire, une
-pour exécuter), méthode qu'iOS 26 et plus récent pourrait refuser. Sans JIT,
+pour exécuter), méthode qu'iOS 26 et plus récent refuse : là, Odin demande sa
+mémoire de code à StikDebug (script `universal.js`), comme les émulateurs
+iOS l'ont adopté. Sans JIT,
 Odin exécute les instructions décodées, environ deux fois plus lentement, mais
 les jeux tournent : un essai sans StikDebug doit le confirmer. Les bêta-testeurs
 se retrouvent sur
