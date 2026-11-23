@@ -5070,7 +5070,7 @@ index cb9126f..fcbe8ea 100644
  	/* False, with the reason on stderr, if the state could not be written
  	 * or is not one of this game and build; the board is then as after a
 diff --git a/src/odin/machine/core/host_code.cpp b/src/odin/machine/core/host_code.cpp
-index 6d950a3..ac08953 100644
+index 6d950a3..e2b3466 100644
 --- a/src/odin/machine/core/host_code.cpp
 +++ b/src/odin/machine/core/host_code.cpp
 @@ -36,6 +36,24 @@
@@ -5098,7 +5098,7 @@ index 6d950a3..ac08953 100644
  #endif
  
  namespace odin {
-@@ -51,18 +69,142 @@ constexpr uintptr_t REACH = 2048u << 20;
+@@ -51,18 +69,160 @@ constexpr uintptr_t REACH = 2048u << 20;
  constexpr uintptr_t REACH = 128u << 20;
  #endif
  
@@ -5135,9 +5135,11 @@ index 6d950a3..ac08953 100644
 +/* A brk no debugger answers stops the process (SIGTRAP): stepped over,
 + * x0 = 0, as when nothing is given */
 +constexpr uint32_t BRK_F00D = 0xD43E01A0;
++volatile sig_atomic_t g_unanswered = 0;
 +
 +void skip_brk(int, siginfo_t *, void *context)
 +{
++	g_unanswered = 1;
 +	ucontext_t *const uc = static_cast<ucontext_t *>(context);
 +	const uint64_t pc = uc->uc_mcontext->__ss.__pc;
 +
@@ -5167,9 +5169,15 @@ index 6d950a3..ac08953 100644
 +	skip.sa_sigaction = skip_brk;
 +	skip.sa_flags = SA_SIGINFO;
 +	sigemptyset(&skip.sa_mask);
++	g_unanswered = 0;
 +	sigaction(SIGTRAP, &skip, &was);
 +	void *const got = jit26_prepare_region(nullptr, size);
 +	sigaction(SIGTRAP, &was, nullptr);
++	if (g_unanswered) {
++		std::fprintf(stderr, "JIT: no debugger answered the request for code memory "
++		                     "(StikDebug: enable JIT with the script universal.js)\n");
++		return nullptr;
++	}
 +
 +	/* A brk not answered may leave its own encoding in x0: a page of 16 KB
 +	 * the process holds, or nothing */
@@ -5183,17 +5191,23 @@ index 6d950a3..ac08953 100644
 +	if (!at || (at & 0x3FFF) ||
 +	    vm_region_64(mach_task_self(), &region, &length, VM_REGION_BASIC_INFO_64,
 +	                 reinterpret_cast<vm_region_info_t>(&info), &count, &object) != KERN_SUCCESS ||
-+	    region > at || region + length < at + size)
++	    region > at || region + length < at + size) {
++		std::fprintf(stderr, "JIT: the debugger's answer is no code memory (%p)\n", got);
 +		return nullptr;
++	}
 +	return static_cast<uint8_t *>(got);
 +}
 +
 +/* The memory to run (anywhere: `at` is not asked on iOS), and its second
 + * mapping to write in `write`: from the debugger on iOS 26 and later, else
-+ * mapped by the process */
++ * mapped by the process. On iOS 26 and later memory the process maps never
++ * runs (the app closes on the first jump there): without the debugger's,
++ * no host code, the decoded instructions, slower (a tester's iPad, iOS 27,
++ * JIT on without the script) */
 +uint8_t *take(uintptr_t at, uint32_t size, uint8_t *&write)
 +{
 +	static const bool jit = jit_enabled();
++	static const bool ios26 = ios_major() >= 26;
 +
 +	if (!jit || at) {
 +		return nullptr;
@@ -5201,6 +5215,10 @@ index 6d950a3..ac08953 100644
 +	void *got = from_debugger(size);
 +	const bool given = got != nullptr;
 +
++	if (!given && ios26) {
++		std::fprintf(stderr, "JIT: off for this CPU: the CPUs run their decoded instructions, slower\n");
++		return nullptr;
++	}
 +	if (!given) {
 +		got = mmap(nullptr, size, PROT_READ | PROT_EXEC, MAP_PRIVATE | MAP_ANONYMOUS, -1, 0);
 +		if (got == MAP_FAILED) {
@@ -5245,7 +5263,7 @@ index 6d950a3..ac08953 100644
  	const int jit = MAP_JIT;
  #else
  	const int jit = 0;
-@@ -78,38 +220,44 @@ uint8_t *take(uintptr_t at, uint32_t size)
+@@ -78,38 +238,44 @@ uint8_t *take(uintptr_t at, uint32_t size)
  		munmap(got, size);
  		return nullptr;
  	}
@@ -5297,7 +5315,7 @@ index 6d950a3..ac08953 100644
  }
  
  } /* namespace */
-@@ -119,18 +267,19 @@ HostCode::HostCode(uint32_t size)
+@@ -119,18 +285,19 @@ HostCode::HostCode(uint32_t size)
  #if defined(ODIN_HOST_AARCH64)
  	  m_written(0),
  #endif
@@ -5320,7 +5338,7 @@ index 6d950a3..ac08953 100644
  namespace {
  thread_local bool g_writing = false;
  }
-@@ -138,7 +287,7 @@ thread_local bool g_writing = false;
+@@ -138,7 +305,7 @@ thread_local bool g_writing = false;
  
  void HostCode::writable()
  {
@@ -5329,7 +5347,7 @@ index 6d950a3..ac08953 100644
  	if (!g_writing) {
  		pthread_jit_write_protect_np(0);
  		g_writing = true;
-@@ -149,7 +298,7 @@ void HostCode::writable()
+@@ -149,7 +316,7 @@ void HostCode::writable()
  void HostCode::ready() const
  {
  #if defined(ODIN_HOST_AARCH64)
@@ -5338,7 +5356,7 @@ index 6d950a3..ac08953 100644
  	if (g_writing) {
  		pthread_jit_write_protect_np(1);
  		g_writing = false;
-@@ -194,13 +343,13 @@ void HostCode::bytes(std::initializer_list<uint8_t> values)
+@@ -194,13 +361,13 @@ void HostCode::bytes(std::initializer_list<uint8_t> values)
  
  void HostCode::word(uint32_t value)
  {
@@ -5354,7 +5372,7 @@ index 6d950a3..ac08953 100644
  	m_used += 8;
  }
  
-@@ -220,7 +369,7 @@ void HostCode::bind(Jump jump)
+@@ -220,7 +387,7 @@ void HostCode::bind(Jump jump)
  {
  	const uint32_t distance = m_used - (jump.from + 4);
  
@@ -5363,7 +5381,7 @@ index 6d950a3..ac08953 100644
  }
  
  void HostCode::jump_back(uint32_t place)
-@@ -352,7 +501,7 @@ void HostCode::way_out()
+@@ -352,7 +519,7 @@ void HostCode::way_out()
  
  #if !defined(ODIN_HOST_X86_64) && !defined(ODIN_HOST_AARCH64) /* a host this file does not write code for */
  
