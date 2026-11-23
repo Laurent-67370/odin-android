@@ -1,7 +1,8 @@
 # Odin pour Android
 
 Portage Android d'[Odin](https://github.com/Tovarichtch/Odin), l'émulateur SEGA
-Hikaru et Gaelco ATV Track de Réda Chérif-Touil (GPL 3). Ce dépôt ne contient
+Hikaru et Gaelco (ATV Track, Smashing Drive, Gaelco 3D, Rolling Extreme) de
+Réda Chérif-Touil (GPL 3). Ce dépôt ne contient
 pas le code d'Odin : le workflow `.github/workflows/build.yml` récupère
 Odin au commit de `odin.version`, applique `patches/0001-android.patch` et
 construit l'APK, publié dans la release **`odin-apk`** de ce dépôt :
@@ -35,6 +36,7 @@ s'affiche dans MENU → About et dans le titre de la publication).
 | Brave Firefighters | jouable, visée au doigt : le jet part sous le doigt |
 | Gaelco Football | second stick tactile pour le tir, à essayer |
 | Virtual-On Force | deux leviers sur les deux sticks tactiles, à essayer |
+| Gaelco 3D (Football Power, Radikal Bikers, Speed Up, Surf Planet), Rolling Extreme | ajoutés avec la mise à jour d'Odin (`571e6f2`), **pas encore essayés** sur téléphone ; le C82 de Rolling Extreme y est interprété (pas de JIT hors x86-64) |
 | Manette tactile | stick flottant, boutons, gâchettes, vibration, panneau de raccourcis ; en paysage, rangée dans deux colonnes latérales ; stick plus sensible dans les jeux à directions, chaque tape comptée même très brève |
 | Format de l'image | 4:3 (borne), 16:9 ou plein écran |
 | Menus | agrandis ×3 en paysage, ×2,5 en portrait (la fiche du jeu sous les vignettes), police Roboto nette ; lignes des menus, boutons et réglages espacés pour le doigt |
@@ -43,7 +45,7 @@ s'affiche dans MENU → About et dans le titre de la publication).
 | Records et réglages des bornes | gardés, aussi quand Android ferme l'app en arrière-plan |
 | Mises à jour | par-dessus l'ancienne version (APK signé d'une clé fixe) |
 | Ajouter des jeux | MENU → File → Add games… : le sélecteur du téléphone, plusieurs fichiers à la fois ; chaque archive copiée dans `Odin/roms` sous le bon nom (reconnue à son contenu), puis vérifiée : « ready to play », BIOS manquant, ancienne version. Essayé sur le téléphone |
-| Liste des jeux | par système (SEGA Hikaru, Gaelco), puis les jeux maison dans une rubrique HOMEBREW |
+| Liste des jeux | par système (SEGA Hikaru, Gaelco, Gaelco 3D, C82), puis les jeux maison dans une rubrique HOMEBREW |
 | Jeux maison sans nouvel APK | leur zip porte leur description : l'import seul les ajoute à la liste (essayé sur le téléphone avec GLOWBUG GARDEN) |
 | Télécharger les jeux maison | MENU → File → Get homebrew games… : la liste des jeux maison publiés (lue sur la publication GitHub du dépôt), chacun « new », « installed » ou « update » ; ceux cochés sont téléchargés puis ajoutés comme par l'import |
 | Version | `1.0.N` dans MENU → About, dans les informations de l'app et dans le titre de la publication ; ce qui change : [CHANGELOG.md](CHANGELOG.md) |
