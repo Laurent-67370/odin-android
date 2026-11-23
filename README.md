@@ -71,16 +71,18 @@ vérifie que chaque branche proposée compile seule pour Android
 
 **Et iOS ?** Une version expérimentale se construit dans
 [odin-ios](https://github.com/Laurent-67370/odin-ios), à partir du même patch
-(menus, manette tactile, dossiers communs aux deux). Des bêta-testeurs sont
-recherchés ([Tovarichtch/Odin#56](https://github.com/Tovarichtch/Odin/issues/56)).
-Odin recompile le SH-4 et l'ARM7 en ARM64 (le JIT), ce qu'iOS n'accorde qu'à
-une app dont un débogueur a activé le JIT (StikDebug) : sa mémoire de code y
-est alors projetée deux fois, une vue pour écrire, une pour exécuter, comme
-dans les émulateurs iOS. Sans JIT, Odin exécute les instructions décodées,
-sans les recompiler : environ deux fois plus lent, mais les jeux tournent
-(jusqu'ici, cette voie plantait faute de mémoire de code). Le reste (SDL3,
-MoltenVK, la manette tactile) se porte : l'`.ipa` est construit sur les Mac de
-GitHub, et ce sont les testeurs qui l'essaient.
+(menus, manette tactile, dossiers, « Add games... » communs aux deux). Premier
+essai réel sur un iPad Pro M5 sous iOS 27 (LiveContainer, JIT par StikDebug) :
+l'app s'ouvre, Vulkan tourne par MoltenVK, la manette DualSense et la liste des
+jeux marchent, un jeu se charge et démarre, puis l'app se ferme au bout d'une
+dizaine de secondes. Piste principale : le JIT. Odin recompile le SH-4 et
+l'ARM7 en ARM64, ce qu'iOS n'accorde qu'à une app dont un débogueur a activé le
+JIT ; sa mémoire de code y est projetée deux fois (une vue pour écrire, une
+pour exécuter), méthode qu'iOS 26 et plus récent pourrait refuser. Sans JIT,
+Odin exécute les instructions décodées, environ deux fois plus lentement, mais
+les jeux tournent : un essai sans StikDebug doit le confirmer. Les bêta-testeurs
+se retrouvent sur
+[Tovarichtch/Odin#56](https://github.com/Tovarichtch/Odin/issues/56).
 
 ## Installer
 
