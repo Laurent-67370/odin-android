@@ -4100,10 +4100,10 @@ index 01c47b0..4023f4f 100644
  	Uint32 event() const;
 diff --git a/src/odin/host/ui/folder_dialog_ios.hpp b/src/odin/host/ui/folder_dialog_ios.hpp
 new file mode 100644
-index 0000000..0c429f1
+index 0000000..10f5135
 --- /dev/null
 +++ b/src/odin/host/ui/folder_dialog_ios.hpp
-@@ -0,0 +1,52 @@
+@@ -0,0 +1,53 @@
 +/*
 + *  ██████╗ ██████╗ ██╗███╗   ██╗
 + * ██╔═══██╗██╔══██╗██║████╗  ██║
@@ -4147,8 +4147,9 @@ index 0000000..0c429f1
 +void pick_archives(SDL_Window *window, PickedArchives done, void *userdata);
 +
 +/* iOS: the homebrew games published with the APK (homebrew.json of its
-+ * release) listed over `window`, new or installed (an archive of the name
-+ * in `roms`); those chosen downloaded to the temporary folder, `done`
++ * release) listed over `window`, each new, installed or with an update
++ * (the CRC of its first EPROM in `roms` against the list's, as on
++ * Android); those chosen downloaded to the temporary folder, `done`
 + * called with their file:// addresses (none: nothing chosen; null: an
 + * error, SDL_GetError() says which) */
 +void pick_homebrew(SDL_Window *window, const std::string &roms, PickedArchives done, void *userdata);
@@ -4158,10 +4159,10 @@ index 0000000..0c429f1
 +#endif /* ODIN_FOLDER_DIALOG_IOS_HPP */
 diff --git a/src/odin/host/ui/folder_dialog_ios.mm b/src/odin/host/ui/folder_dialog_ios.mm
 new file mode 100644
-index 0000000..afe9a19
+index 0000000..b0b9db8
 --- /dev/null
 +++ b/src/odin/host/ui/folder_dialog_ios.mm
-@@ -0,0 +1,294 @@
+@@ -0,0 +1,320 @@
 +/*
 + *  ██████╗ ██████╗ ██╗███╗   ██╗
 + * ██╔═══██╗██╔══██╗██║████╗  ██║
@@ -4192,6 +4193,7 @@ index 0000000..afe9a19
 + * line, as Android's picker answers. SDL has no picker on iOS. */
 +
 +#include "odin/host/ui/folder_dialog_ios.hpp"
++#include "odin/host/app/rom_files.hpp"
 +
 +#import <UIKit/UIKit.h>
 +#import <UniformTypeIdentifiers/UniformTypeIdentifiers.h>
@@ -4201,6 +4203,7 @@ index 0000000..afe9a19
 +
 +#include <SDL3/SDL_error.h>
 +
++#include <cstdio>
 +#include <filesystem>
 +#include <memory>
 +#include <string>
@@ -4347,8 +4350,33 @@ index 0000000..afe9a19
 +	}
 +}
 +
-+/* The list shown: every game new or installed, one button each, and one
-+ * for all the new ones */
++/* A homebrew game in `roms`: "new" when it is not there, "installed" when
++ * its first EPROM (<name>.ic29) has the CRC the list gives, else "update",
++ * as on Android */
++NSString *
++status_of(const std::string &roms, NSString *name, NSString *crc)
++{
++	const std::unique_ptr<odin::Archive> archive =
++		odin::Archive::open(roms + "/" + name.UTF8String + ".zip");
++
++	if (!archive)
++		return @"new";
++
++	const std::string first = std::string(name.UTF8String) + ".ic29";
++
++	for (const odin::Archive::Entry &entry : archive->entries()) {
++		if (entry.name != first || !entry.crc_known)
++			continue;
++		char now[9];
++		std::snprintf(now, sizeof(now), "%08x", entry.crc);
++		return [crc caseInsensitiveCompare:[NSString stringWithUTF8String:now]] == NSOrderedSame ? @"installed"
++		                                                                                         : @"update";
++	}
++	return @"update";
++}
++
++/* The list shown: every game new, installed or with an update, one button
++ * each, and one for all those new or updated */
 +void
 +choose(SDL_Window *window, const std::string &roms, NSArray<NSDictionary *> *games, odin::PickedArchives done,
 +       void *userdata)
@@ -4367,12 +4395,11 @@ index 0000000..afe9a19
 +
 +	for (NSDictionary *game in games) {
 +		NSString *const name = [NSString stringWithFormat:@"%@", game[@"name"]];
-+		std::error_code there;
-+		const bool installed = std::filesystem::exists(roms + "/" + name.UTF8String + ".zip", there);
-+		NSString *const label = [NSString stringWithFormat:@"%@ - %@ (%@)", game[@"title"], game[@"genre"],
-+		                                                   installed ? @"installed" : @"new"];
++		NSString *const status = status_of(roms, name, [NSString stringWithFormat:@"%@", game[@"crc"]]);
++		NSString *const label =
++			[NSString stringWithFormat:@"%@ - %@ (%@)", game[@"title"], game[@"genre"], status];
 +
-+		if (!installed)
++		if (![status isEqualToString:@"installed"])
 +			[fresh addObject:game];
 +		[alert addAction:[UIAlertAction actionWithTitle:label
 +		                                          style:UIAlertActionStyleDefault
@@ -4383,7 +4410,7 @@ index 0000000..afe9a19
 +	}
 +	if (fresh.count > 1) {
 +		NSArray<NSDictionary *> *const all = [fresh copy];
-+		[alert addAction:[UIAlertAction actionWithTitle:[NSString stringWithFormat:@"All the new ones (%lu)",
++		[alert addAction:[UIAlertAction actionWithTitle:[NSString stringWithFormat:@"All the new and updated (%lu)",
 +		                                                                           (unsigned long)all.count]
 +		                                          style:UIAlertActionStyleDefault
 +		                                        handler:^(UIAlertAction *action) {
