@@ -1,5 +1,5 @@
 diff --git a/CMakeLists.txt b/CMakeLists.txt
-index e034434..2b82550 100644
+index cd226d9..d867fde 100644
 --- a/CMakeLists.txt
 +++ b/CMakeLists.txt
 @@ -16,6 +16,29 @@ include(GNUInstallDirs)
@@ -84,7 +84,7 @@ index e034434..2b82550 100644
  elseif(UNIX AND ODIN_GLES)
  	odin_system_only(gles glesv2)
  	odin_system_only(x11 x11)
-@@ -221,8 +262,8 @@ set(ODIN_SOURCES
+@@ -234,8 +275,8 @@ set(ODIN_SOURCES
  	host/ui/folder_dialog.cpp host/ui/pad_view.cpp
  	host/ui/pad_drawings.cpp host/ui/pad_drawings_al2009man.cpp
  	host/ui/gun_drawings.cpp
@@ -95,7 +95,7 @@ index e034434..2b82550 100644
  	host/input/pointers.cpp host/input/wheel_force.cpp host/input/gun_serial.cpp
  	host/input/evdev.cpp host/input/rawinput.cpp
  	host/input/outputs_network.cpp host/input/sockets.cpp
-@@ -312,7 +353,15 @@ set_source_files_properties(src/miniz/miniz.c PROPERTIES COMPILE_DEFINITIONS USE
+@@ -325,7 +366,15 @@ set_source_files_properties(src/miniz/miniz.c PROPERTIES COMPILE_DEFINITIONS USE
  set_source_files_properties(src/odin/host/app/zip_crc.cpp PROPERTIES
  	COMPILE_OPTIONS "-isystem;${CMAKE_SOURCE_DIR}/src/miniz")
  
@@ -112,7 +112,7 @@ index e034434..2b82550 100644
  set(GLSL ${CMAKE_SOURCE_DIR}/src/odin/host/gfx/glsl)
  set(SPIRV_DIR ${CMAKE_BINARY_DIR}/spirv)
  file(MAKE_DIRECTORY ${SPIRV_DIR}/glsl)
-@@ -324,10 +373,10 @@ foreach(shader whole_picture.vert blend.frag compose.vert compose.frag present.f
+@@ -338,10 +387,10 @@ foreach(shader whole_picture.vert blend.frag compose.vert compose.frag present.f
  	string(REGEX REPLACE ".*\\." "" stage ${shader})
  	set(out ${SPIRV_DIR}/glsl/${shader}.spv)
  	if(shader STREQUAL "sort.frag")
@@ -125,7 +125,7 @@ index e034434..2b82550 100644
  		set(inputs ${GLSL}/${shader})
  	endif()
  	add_custom_command(OUTPUT ${out}
-@@ -337,13 +386,13 @@ foreach(shader whole_picture.vert blend.frag compose.vert compose.frag present.f
+@@ -351,13 +400,13 @@ foreach(shader whole_picture.vert blend.frag compose.vert compose.frag present.f
  endforeach()
  set(out ${SPIRV_DIR}/glsl/mesh_collect.frag.spv)
  add_custom_command(OUTPUT ${out}
@@ -141,7 +141,7 @@ index e034434..2b82550 100644
  		${GLSLANG} ${out} ${GLSL}/pmx.frag
  	DEPENDS ${GLSL}/pmx.frag VERBATIM)
  list(APPEND SPIRV ${out})
-@@ -355,14 +404,14 @@ foreach(variant list native_list)
+@@ -369,14 +418,14 @@ foreach(variant list native_list)
  		set(defines "echo '#define NATIVE 1'; echo '#define LIST 1'")
  	endif()
  	add_custom_command(OUTPUT ${out}
@@ -158,7 +158,7 @@ index e034434..2b82550 100644
  		${GLSLANG} ${out} ${GLSL}/mesh.frag
  	DEPENDS ${GLSL}/mesh.frag VERBATIM)
  list(APPEND SPIRV ${out})
-@@ -429,8 +478,28 @@ set_source_files_properties(src/odin/host/app/rom_files.cpp PROPERTIES
+@@ -443,8 +492,28 @@ set_source_files_properties(src/odin/host/app/rom_files.cpp PROPERTIES
  set_source_files_properties(src/odin/host/gfx/host_graphics_vk.cpp PROPERTIES
  	COMPILE_DEFINITIONS "${VULKAN_FLAGS}")
  
@@ -189,7 +189,7 @@ index e034434..2b82550 100644
  set_target_properties(odin PROPERTIES CXX_STANDARD 20 CXX_STANDARD_REQUIRED ON CXX_EXTENSIONS OFF
  	RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin)
  target_include_directories(odin PRIVATE src)
-@@ -494,7 +563,7 @@ foreach(glsl ${FILTER_GLSL})
+@@ -508,7 +577,7 @@ foreach(glsl ${FILTER_GLSL})
  endforeach()
  add_custom_target(spirv ALL DEPENDS ${FILTER_SPIRV})
  
@@ -275,7 +275,7 @@ index 0000000..30a2e0f
 +</dict>
 +</plist>
 diff --git a/odin-games.json b/odin-games.json
-index 93ce8f8..27c48a2 100644
+index 6b6132e..b8b11c3 100644
 --- a/odin-games.json
 +++ b/odin-games.json
 @@ -37,8 +37,8 @@
@@ -290,10 +290,10 @@ index 93ce8f8..27c48a2 100644
  				{ "name" : "DOWN", "id" : "down", "switch" : "1P DOWN", "role" : "button6", "keys" : [ "Down" ] },
  				{ "name" : "YAW", "id" : "yaw", "analog" : 0, "low" : "left", "role" : "stick_x" },
 diff --git a/src/odin/host/app/atvtrack_play.cpp b/src/odin/host/app/atvtrack_play.cpp
-index 3e9ff4e..15ebb6e 100644
+index 7871519..5f6796e 100644
 --- a/src/odin/host/app/atvtrack_play.cpp
 +++ b/src/odin/host/app/atvtrack_play.cpp
-@@ -353,7 +353,7 @@ AtvGame::run_frame()
+@@ -266,7 +266,7 @@ AtvGame::run_frame()
  } /* namespace */
  
  Ended
@@ -301,7 +301,7 @@ index 3e9ff4e..15ebb6e 100644
 +play_atvtrack(const Options &options, const Game &game, GameList &games, Settings &settings,
                const std::string &settings_file, Display &display, Keyboard &keys, Pointers *pointers, Opened &opened)
  {
- 	Controls controls(keys, game.controls, game.outputs, settings, game.name);
+ 	GaelcoPlay play(options, game, games, settings, settings_file, display, keys, pointers, opened, DAC_RATE);
 diff --git a/src/odin/host/app/atvtrack_play.hpp b/src/odin/host/app/atvtrack_play.hpp
 index 9955f44..fb07783 100644
 --- a/src/odin/host/app/atvtrack_play.hpp
@@ -315,8 +315,69 @@ index 9955f44..fb07783 100644
                      const std::string &settings_file, Display &display, Keyboard &keys, Pointers *pointers,
                      Opened &opened);
  
+diff --git a/src/odin/host/app/gaelco3d_play.cpp b/src/odin/host/app/gaelco3d_play.cpp
+index 612c055..d7cdbd4 100644
+--- a/src/odin/host/app/gaelco3d_play.cpp
++++ b/src/odin/host/app/gaelco3d_play.cpp
+@@ -361,7 +361,7 @@ Gaelco3dGame::run_frame()
+ } /* namespace */
+ 
+ Ended
+-play_gaelco3d(const Options &options, const Game &game, const GameList &games, Settings &settings,
++play_gaelco3d(const Options &options, const Game &game, GameList &games, Settings &settings,
+               const std::string &settings_file, Display &display, Keyboard &keys, Pointers *pointers, Opened &opened)
+ {
+ 	GaelcoPlay play(options, game, games, settings, settings_file, display, keys, pointers, opened,
+diff --git a/src/odin/host/app/gaelco3d_play.hpp b/src/odin/host/app/gaelco3d_play.hpp
+index 17e2347..0e3960b 100644
+--- a/src/odin/host/app/gaelco3d_play.hpp
++++ b/src/odin/host/app/gaelco3d_play.hpp
+@@ -34,7 +34,7 @@ namespace odin {
+ 
+ /* Runs a Gaelco 3D game in Odin's window, with the Hikaru menu, bar and
+  * controls. */
+-Ended play_gaelco3d(const Options &options, const Game &game, const GameList &games, Settings &settings,
++Ended play_gaelco3d(const Options &options, const Game &game, GameList &games, Settings &settings,
+                     const std::string &settings_file, Display &display, Keyboard &keys, Pointers *pointers,
+                     Opened &opened);
+ 
+diff --git a/src/odin/host/app/gaelco_play.cpp b/src/odin/host/app/gaelco_play.cpp
+index 926b52e..b5cb034 100644
+--- a/src/odin/host/app/gaelco_play.cpp
++++ b/src/odin/host/app/gaelco_play.cpp
+@@ -91,7 +91,7 @@ picture_scene(const std::vector<uint32_t> &picture, unsigned width, unsigned hei
+ 	return scene;
+ }
+ 
+-GaelcoPlay::GaelcoPlay(const Options &options, const Game &game, const GameList &games, Settings &settings,
++GaelcoPlay::GaelcoPlay(const Options &options, const Game &game, GameList &games, Settings &settings,
+                        const std::string &settings_file, Display &display, Keyboard &keys, Pointers *pointers,
+                        Opened &opened, int rate)
+ 	: m_options(options), m_game(game), m_games(games), m_settings(settings), m_settings_file(settings_file),
+diff --git a/src/odin/host/app/gaelco_play.hpp b/src/odin/host/app/gaelco_play.hpp
+index e4de2e4..3fc7336 100644
+--- a/src/odin/host/app/gaelco_play.hpp
++++ b/src/odin/host/app/gaelco_play.hpp
+@@ -67,7 +67,7 @@ class GaelcoPlay {
+ public:
+ 	/* The controls as [players.<game>] sets them, the outputs sent to other
+ 	 * programs, and the sound at the board's `rate` */
+-	GaelcoPlay(const Options &options, const Game &game, const GameList &games, Settings &settings,
++	GaelcoPlay(const Options &options, const Game &game, GameList &games, Settings &settings,
+ 	           const std::string &settings_file, Display &display, Keyboard &keys, Pointers *pointers, Opened &opened,
+ 	           int rate);
+ 
+@@ -81,7 +81,7 @@ public:
+ private:
+ 	const Options &m_options;
+ 	const Game &m_game;
+-	const GameList &m_games;
++	GameList &m_games;
+ 	Settings &m_settings;
+ 	const std::string &m_settings_file;
+ 	Display &m_display;
 diff --git a/src/odin/host/app/games.cpp b/src/odin/host/app/games.cpp
-index 4482739..98e23e7 100644
+index 950582d..5c9b4b8 100644
 --- a/src/odin/host/app/games.cpp
 +++ b/src/odin/host/app/games.cpp
 @@ -29,6 +29,8 @@
@@ -328,7 +389,7 @@ index 4482739..98e23e7 100644
  #include <utility>
  
  #include <jansson.h>
-@@ -1217,7 +1219,7 @@ GameList::entries() const
+@@ -1264,7 +1266,7 @@ GameList::entries() const
  
  		if (json_array_size(json_object_get(rom, "controls")) > 0)
  			out.push_back({ name, title ? title : name, json_string_value(json_object_get(rom, "mach")),
@@ -337,7 +398,7 @@ index 4482739..98e23e7 100644
  	}
  	return out;
  }
-@@ -1277,6 +1279,133 @@ GameList::missing(RomFiles &files, const std::string &name) const
+@@ -1325,6 +1327,133 @@ GameList::missing(RomFiles &files, const std::string &name) const
  	return out;
  }
  
@@ -472,10 +533,10 @@ index 4482739..98e23e7 100644
  GameList::load_game(RomFiles &files, const std::string &name) const
  {
 diff --git a/src/odin/host/app/games.hpp b/src/odin/host/app/games.hpp
-index 72cd8ab..64c7bf0 100644
+index 3a3c266..8e67f10 100644
 --- a/src/odin/host/app/games.hpp
 +++ b/src/odin/host/app/games.hpp
-@@ -426,6 +426,7 @@ public:
+@@ -486,6 +486,7 @@ public:
  	/* Those of every machine, with their machine and their parent */
  	struct Entry {
  		std::string name, title, machine, parent;
@@ -483,7 +544,7 @@ index 72cd8ab..64c7bf0 100644
  	};
  	std::vector<Entry> entries() const;
  	std::vector<std::pair<std::string, std::string>> titles() const;
-@@ -438,6 +439,23 @@ public:
+@@ -498,6 +499,23 @@ public:
  	 * alternative, all those of the other sections, but those of a
  	 * section it runs without */
  	std::vector<RomFiles::File> missing(RomFiles &files, const std::string &name) const;
@@ -939,7 +1000,7 @@ index 0000000..5c437f3
 +
 +#endif /* ODIN_IMPORT_GAMES_HPP */
 diff --git a/src/odin/host/app/library.cpp b/src/odin/host/app/library.cpp
-index 9d6ca81..5a6b3f7 100644
+index 6006d0b..162f8f4 100644
 --- a/src/odin/host/app/library.cpp
 +++ b/src/odin/host/app/library.cpp
 @@ -29,6 +29,7 @@
@@ -950,21 +1011,26 @@ index 9d6ca81..5a6b3f7 100644
  #include "odin/host/app/rom_files.hpp"
  #include "odin/host/app/user_files.hpp"
  
-@@ -51,7 +52,13 @@ scan_library(LibraryState &state, const GameList &games, const Options &options,
- 	for (const GameList::Entry &entry : games.entries()) {
- 		const std::string &name = entry.name;
+@@ -53,10 +54,17 @@ scan_library(LibraryState &state, const GameList &games, const Options &options,
  		const bool theirs = entry.machine != "hikaru";
+ 		/* Gaelco's three systems: its own 3D chips, PowerVR (ATV Track's),
+ 		 * or the TMS320C82 (Rolling Extreme's) */
+-		const std::string system = !theirs                          ? entry.machine
++		const std::string gaelco = !theirs                          ? entry.machine
+ 		                           : rollext_machine(entry.machine)  ? "c82"
+ 		                           : gaelco3d_machine(entry.machine) ? "gaelco3d"
+ 		                                                             : "gaelco";
 +#if defined(ODIN_PHONE)
 +		/* The games made for the board in a group of their own, after the
 +		 * cabinets' */
-+		const std::string system = entry.homebrew ? "homebrew" : theirs ? "gaelco" : entry.machine;
++		const std::string system = entry.homebrew ? "homebrew" : gaelco;
 +#else
- 		const std::string system = theirs ? "gaelco" : entry.machine;
++		const std::string &system = gaelco;
 +#endif
  		LibraryState::Game game{ name, entry.title, entry.parent, {}, theirs, system };
  
  		if (std::find(state.systems.begin(), state.systems.end(), system) == state.systems.end())
-@@ -153,7 +160,7 @@ library_pictures(Display &display, const LibraryState &state, const std::string
+@@ -163,7 +171,7 @@ library_pictures(Display &display, const LibraryState &state, const std::string
  } /* namespace */
  
  Opened
@@ -973,7 +1039,7 @@ index 9d6ca81..5a6b3f7 100644
          Display &display, Keyboard &keys, Pointers *pointers, const std::string &last, const std::string &failed)
  {
  	using Ask = BarState::Ask;
-@@ -200,6 +207,20 @@ library(const Options &command, const GameList &games, Settings &settings, const
+@@ -210,6 +218,20 @@ library(const Options &command, const GameList &games, Settings &settings, const
  				std::string note;
  
  				if (const std::optional<FolderDialog::Answer> archive = menus.take_folder()) {
@@ -1008,7 +1074,7 @@ index c859303..8e88cb5 100644
                 const std::string &failed);
  
 diff --git a/src/odin/host/app/main.cpp b/src/odin/host/app/main.cpp
-index 1a4e66f..c52eb0c 100644
+index 84d1d63..103b2ba 100644
 --- a/src/odin/host/app/main.cpp
 +++ b/src/odin/host/app/main.cpp
 @@ -25,7 +25,9 @@
@@ -1021,7 +1087,7 @@ index 1a4e66f..c52eb0c 100644
  #include <cstdlib>
  #include <cstring>
  #include <memory>
-@@ -46,9 +48,26 @@
+@@ -48,9 +50,26 @@
  #include "odin/common/stop_message.hpp"
  #include "odin/host/app/session.hpp"
  #include "odin/host/app/settings.hpp"
@@ -1048,7 +1114,7 @@ index 1a4e66f..c52eb0c 100644
  namespace odin {
  namespace {
  
-@@ -106,7 +125,7 @@ open_sound(Options &options, const Game &game, const Settings &settings)
+@@ -108,7 +127,7 @@ open_sound(Options &options, const Game &game, const Settings &settings)
   * command line and odin.ini hold for it, what it changes of them for itself
   * does not stay. */
  Ended
@@ -1057,7 +1123,7 @@ index 1a4e66f..c52eb0c 100644
       const std::string &settings_file, Display &display, Keyboard &keys, Pointers *pointers, Opened &opened)
  {
  	Options options = given;
-@@ -267,6 +286,50 @@ games_test_list()
+@@ -280,6 +299,50 @@ games_test_list()
  	return next;
  }
  
@@ -1108,7 +1174,7 @@ index 1a4e66f..c52eb0c 100644
  } /* namespace */
  } /* namespace odin */
  
-@@ -276,6 +339,50 @@ main(int argc, char **argv)
+@@ -289,6 +352,50 @@ main(int argc, char **argv)
  	odin::Options options;
  	odin::GameList games;
  
@@ -1159,7 +1225,7 @@ index 1a4e66f..c52eb0c 100644
  	/* With the OpenGL driver of Intel loaded, a process of Windows ends
  	 * without what its buffers still hold: it goes out here. */
  	std::atexit([] { std::fflush(nullptr); });
-@@ -291,6 +398,14 @@ main(int argc, char **argv)
+@@ -304,6 +411,14 @@ main(int argc, char **argv)
  	}
  	odin::start_log(options);
  	odin::print_banner();
@@ -1174,7 +1240,7 @@ index 1a4e66f..c52eb0c 100644
  	if (parsed != odin::Parsed::RUN) {
  		odin::print_help(argv[0]);
  		return parsed == odin::Parsed::HELP_ASKED ? 0 : 1;
-@@ -300,6 +415,14 @@ main(int argc, char **argv)
+@@ -313,6 +428,14 @@ main(int argc, char **argv)
  		std::fprintf(stderr, "ERROR: failed to load the game list\n");
  		return 1;
  	}
@@ -1190,7 +1256,7 @@ index 1a4e66f..c52eb0c 100644
  	odin::Settings settings;
  	const std::string settings_file = odin::load_settings(settings, games, options.config);
 diff --git a/src/odin/host/app/options.cpp b/src/odin/host/app/options.cpp
-index 23e723f..5dcfc72 100644
+index 9054b54..68eb536 100644
 --- a/src/odin/host/app/options.cpp
 +++ b/src/odin/host/app/options.cpp
 @@ -26,6 +26,7 @@
@@ -1209,8 +1275,8 @@ index 23e723f..5dcfc72 100644
 +			options.display.shape = static_cast<unsigned>(*index_named(PICTURE_SHAPES, value));
  		} else if (key == "upscale_mode" && index_named(UPSCALE_MODES, value)) {
  			options.display.upscale_mode = static_cast<DisplayUpscaleMode>(*index_named(UPSCALE_MODES, value));
- 		} else if (key == "bezel" && index_named(SIDES_NAMES, value)) {
-@@ -679,7 +682,7 @@ known_settings(const GameList &games, int button)
+ 		} else if (key == "gaelco3d_fields" && index_named(GAELCO3D_FIELDS, value)) {
+@@ -690,7 +693,7 @@ known_settings(const GameList &games, int button)
  {
  	std::vector<Settings::Known> out = {
  		{ "display", "scale", "1" }, { "display", "upscale_mode", UPSCALE_MODES[0] }, { "display", "anisotropy", "1" },
@@ -1220,7 +1286,7 @@ index 23e723f..5dcfc72 100644
  		{ "display", "bezel", SIDES_NAMES[static_cast<unsigned>(SIDES)] },
  		{ "display", "unthrottled", "off" }, { "display", "show_speed", "on" }, { "display", "filter", "none" },
 diff --git a/src/odin/host/app/options.hpp b/src/odin/host/app/options.hpp
-index 31918b5..3ac4953 100644
+index ee38253..a115bdb 100644
 --- a/src/odin/host/app/options.hpp
 +++ b/src/odin/host/app/options.hpp
 @@ -48,7 +48,7 @@ inline constexpr const char *VSYNCS[] = { "off", "on", "adaptive" };
@@ -1232,8 +1298,34 @@ index 31918b5..3ac4953 100644
  inline constexpr DisplayApi API = DisplayApi::VULKAN;
  #else
  inline constexpr DisplayApi API = DisplayApi::OPENGL;
+diff --git a/src/odin/host/app/rollext_play.cpp b/src/odin/host/app/rollext_play.cpp
+index 8d2cf43..6159b31 100644
+--- a/src/odin/host/app/rollext_play.cpp
++++ b/src/odin/host/app/rollext_play.cpp
+@@ -316,7 +316,7 @@ RollextGame::run_frame()
+ } /* namespace */
+ 
+ Ended
+-play_rollext(const Options &options, const Game &game, const GameList &games, Settings &settings,
++play_rollext(const Options &options, const Game &game, GameList &games, Settings &settings,
+              const std::string &settings_file, Display &display, Keyboard &keys, Pointers *pointers, Opened &opened)
+ {
+ 	GaelcoPlay play(options, game, games, settings, settings_file, display, keys, pointers, opened, SOUND_RATE);
+diff --git a/src/odin/host/app/rollext_play.hpp b/src/odin/host/app/rollext_play.hpp
+index 09521ed..b957302 100644
+--- a/src/odin/host/app/rollext_play.hpp
++++ b/src/odin/host/app/rollext_play.hpp
+@@ -35,7 +35,7 @@ namespace odin {
+  * the Hikaru menu and bar: its 3D chip's picture, its four channels of
+  * sound, the controls and outputs of its cabinet, its handlebar's motor
+  * and its EEPROM kept between two sessions. */
+-Ended play_rollext(const Options &options, const Game &game, const GameList &games, Settings &settings,
++Ended play_rollext(const Options &options, const Game &game, GameList &games, Settings &settings,
+                    const std::string &settings_file, Display &display, Keyboard &keys, Pointers *pointers,
+                    Opened &opened);
+ 
 diff --git a/src/odin/host/app/session.cpp b/src/odin/host/app/session.cpp
-index 094c084..8a36b32 100644
+index cd69e0f..fd1722a 100644
 --- a/src/odin/host/app/session.cpp
 +++ b/src/odin/host/app/session.cpp
 @@ -26,6 +26,8 @@
@@ -1275,7 +1367,7 @@ index 094c084..8a36b32 100644
  		if (const std::optional<Opened> opened = open_archive(*archive, m_games, note)) {
  			m_opened = *opened;
  			m_end = Ended::OPENED;
-@@ -481,7 +499,7 @@ Session::frames()
+@@ -482,7 +500,7 @@ Session::frames()
  			m_audio->play(m_board.sound(false), m_board.sound(true));
  
  		/* The bar, or a note alone, over the frame */
@@ -1368,7 +1460,7 @@ index 6990a0c..d736e4f 100644
  std::string
  odin_data_dir()
 diff --git a/src/odin/host/gfx/gl_common.cpp b/src/odin/host/gfx/gl_common.cpp
-index ddbdf32..5a222d1 100644
+index 57f1784..915e682 100644
 --- a/src/odin/host/gfx/gl_common.cpp
 +++ b/src/odin/host/gfx/gl_common.cpp
 @@ -26,6 +26,7 @@
@@ -2001,10 +2093,10 @@ index c29c57e..9f4fd5f 100644
  	uint32_t m_stamp_bits = 0;
  	bool m_validation = false;
 diff --git a/src/odin/host/input/bindings.cpp b/src/odin/host/input/bindings.cpp
-index ea40540..f1fc003 100644
+index b09f826..197adc4 100644
 --- a/src/odin/host/input/bindings.cpp
 +++ b/src/odin/host/input/bindings.cpp
-@@ -550,6 +550,13 @@ Bindings::keys_toward(Role role, unsigned player, bool positive)
+@@ -551,6 +551,13 @@ Bindings::keys_toward(Role role, unsigned player, bool positive)
  		if (const auto input = HostInput::parse(std::string("key:") + key))
  			out.push_back(*input);
  	}
@@ -2019,7 +2111,7 @@ index ea40540..f1fc003 100644
  }
  
 diff --git a/src/odin/host/input/controls.cpp b/src/odin/host/input/controls.cpp
-index c4acd40..7cdb33e 100644
+index 0d2edbf..feb5fd9 100644
 --- a/src/odin/host/input/controls.cpp
 +++ b/src/odin/host/input/controls.cpp
 @@ -23,6 +23,7 @@
@@ -2094,7 +2186,7 @@ index c4acd40..7cdb33e 100644
  		const int index = mouse_button_of(event.button.button);
  
  		if (index >= 0)
-@@ -862,6 +899,16 @@ Controls::pad_type(unsigned player) const
+@@ -890,6 +927,16 @@ Controls::pad_type(unsigned player) const
  void
  Controls::update()
  {
@@ -3149,10 +3241,10 @@ index 0000000..2197c94
 +
 +#endif /* ODIN_TOUCH_PAD_HPP */
 diff --git a/src/odin/host/renderer/hikaru/drawing.hpp b/src/odin/host/renderer/hikaru/drawing.hpp
-index 92dcbe5..d14cc25 100644
+index 8af5fac..c43033d 100644
 --- a/src/odin/host/renderer/hikaru/drawing.hpp
 +++ b/src/odin/host/renderer/hikaru/drawing.hpp
-@@ -48,6 +48,16 @@
+@@ -50,6 +50,16 @@
  
  namespace odin {
  
@@ -3318,10 +3410,10 @@ index 91fa8e4..2d7b422 100644
  
  } /* namespace odin */
 diff --git a/src/odin/host/renderer/hikaru/vk/drawing_vk.hpp b/src/odin/host/renderer/hikaru/vk/drawing_vk.hpp
-index 2c8c5a7..ef47e4f 100644
+index 80547ce..456a7cd 100644
 --- a/src/odin/host/renderer/hikaru/vk/drawing_vk.hpp
 +++ b/src/odin/host/renderer/hikaru/vk/drawing_vk.hpp
-@@ -88,7 +88,9 @@ public:
+@@ -89,7 +89,9 @@ public:
  	bool holds_program(uint64_t key) const override { return m_variants.contains(key); }
  	void begin_preparing() override {}
  	void prepare_program(uint64_t key) override;
@@ -3332,7 +3424,7 @@ index 2c8c5a7..ef47e4f 100644
  	unsigned programs_read_back() const override { return m_read_back; }
  	unsigned programs_compiled() const override { return m_compiled; }
  
-@@ -158,7 +160,10 @@ private:
+@@ -167,7 +169,10 @@ private:
  		uint32_t snap;
  		float scale;
  		float family;
@@ -3343,7 +3435,7 @@ index 2c8c5a7..ef47e4f 100644
  
  	/* The number of the picture of the frame, as the window reads it;
  	 * the format of the pictures */
-@@ -198,9 +203,11 @@ private:
+@@ -207,9 +212,11 @@ private:
  	void close_scene();
  	void use_depth();
  	void log(const char *fmt, ...) const __attribute__((format(printf, 2, 3)));
@@ -3357,7 +3449,7 @@ index 2c8c5a7..ef47e4f 100644
  	void read_cache(const std::string &path);
  	void write_cache();
  	void write_view(unsigned index);
-@@ -268,6 +275,9 @@ private:
+@@ -277,6 +284,9 @@ private:
  	/* The pipelines draw_pmx makes after prepare_pmx */
  	ProgramList m_pmx_list;
  	unsigned m_read_back = 0, m_compiled = 0;
@@ -3367,7 +3459,7 @@ index 2c8c5a7..ef47e4f 100644
  	bool m_preparing = false;
  
  	/* The list being drawn: its buffers (the views and the lightsets
-@@ -276,6 +286,22 @@ private:
+@@ -285,6 +295,22 @@ private:
  	SceneDebug m_debug{};
  	vk::Slice m_vertices{}, m_indices{}, m_views{}, m_lightsets{};
  	VkDescriptorSet m_list_set = VK_NULL_HANDLE;
@@ -4484,7 +4576,7 @@ index 0000000..b0b9db8
 +
 +} /* namespace odin */
 diff --git a/src/odin/host/ui/menu.cpp b/src/odin/host/ui/menu.cpp
-index 0678015..54ad0d8 100644
+index 76b4e1e..3799af2 100644
 --- a/src/odin/host/ui/menu.cpp
 +++ b/src/odin/host/ui/menu.cpp
 @@ -28,6 +28,7 @@
@@ -4495,7 +4587,7 @@ index 0678015..54ad0d8 100644
  #include <optional>
  #include <utility>
  
-@@ -136,6 +137,14 @@ constexpr float WIDE = 1.5f;
+@@ -140,6 +141,14 @@ constexpr float WIDE = 1.5f;
   * sooner, as the window is larger (the drawings of the page Input already
   * are, at 1600 by 900) */
  constexpr float LETTERS_UP = 0.45f;
@@ -4510,7 +4602,7 @@ index 0678015..54ad0d8 100644
  
  /* The size of the menu in a window of that size, and the size it is made
   * for */
-@@ -400,8 +409,33 @@ Menu::follow_scale()
+@@ -404,8 +413,33 @@ Menu::follow_scale()
  	SDL_GetWindowSize(m_window, &w, &h);
  
  	const auto [size, made] = menu_size(static_cast<float>(w), static_cast<float>(h));
@@ -4545,7 +4637,7 @@ index 0678015..54ad0d8 100644
  
  	if (scale == m_scale && density == m_density)
  		return;
-@@ -410,7 +444,7 @@ Menu::follow_scale()
+@@ -414,7 +448,7 @@ Menu::follow_scale()
  
  	style = m_style;
  	style.ScaleAllSizes(scale);
@@ -4554,7 +4646,7 @@ index 0678015..54ad0d8 100644
  	m_scale = scale;
  	m_density = density;
  }
-@@ -424,17 +458,34 @@ void
+@@ -428,17 +462,34 @@ void
  Menu::add_fonts()
  {
  	static constexpr float COZETTE_SIZE = 13.0f;
@@ -4594,7 +4686,7 @@ index 0678015..54ad0d8 100644
  	m_fonts = std::make_unique<SystemFonts>();
  	for (const SystemFonts::Font &font : m_fonts->fonts()) {
  		ImFontConfig more;
-@@ -667,6 +718,15 @@ Menu::page_display(MenuKit &kit, MenuState &state) const
+@@ -697,6 +748,15 @@ Menu::page_display(MenuKit &kit, MenuState &state) const
  			state.upscale_mode = static_cast<unsigned>(upscale_mode);
  	});
  
@@ -4608,13 +4700,13 @@ index 0678015..54ad0d8 100644
 +		state.shape = static_cast<unsigned>(shape);
 +
  	int filter = anisotropy_index(state.anisotropy);
+ 	const char *const no_filter = state.own_picture || state.board_picture ? "no effect on this game" : nullptr;
  
- 	kit.next_tip("Sharpens distant textures, such as roads and floors (NASCAR, Virtual-On). The cabinet has none.");
 diff --git a/src/odin/host/ui/menu.hpp b/src/odin/host/ui/menu.hpp
-index d908c1f..4db9e13 100644
+index a692aec..b493b2c 100644
 --- a/src/odin/host/ui/menu.hpp
 +++ b/src/odin/host/ui/menu.hpp
-@@ -153,6 +153,7 @@ struct BarSettings {
+@@ -163,6 +163,7 @@ struct BarSettings {
  	 * a second in the title; what draws (DisplayApi) and the card it draws
  	 * on (HostGraphics::gpus, empty: the best one), at the next launch */
  	unsigned scale = 1, upscale_mode = 0, anisotropy = 1, window = 1, vsync = 0, sides = 2, api = 0;
@@ -4622,7 +4714,7 @@ index d908c1f..4db9e13 100644
  	std::string filter, gpu_chosen;
  	std::vector<std::string> gpus;	/* the cards of the computer */
  	/* Only Vulkan can be told which card, with more than one to tell */
-@@ -256,7 +257,8 @@ struct BarState : BarSettings {
+@@ -280,7 +281,8 @@ struct BarState : BarSettings {
  	 * (PAD, KEYBOARD, GUN, INPUTS_*): the player, the gamepad or joystick
  	 * chosen (in pads), the light gun chosen (in guns, -1: none) */
  	enum class Ask { NONE, OPEN, CLOSE, RESET, SAVE_STATE, LOAD_STATE, CARD, CARD_CHOOSE, CARD_NEW, SETTINGS, FULLSCREEN,
@@ -4632,7 +4724,7 @@ index d908c1f..4db9e13 100644
  	Ask ask = Ask::NONE;
  	int page = -1, card_chosen = -1;
  	std::string card_name;
-@@ -782,6 +784,9 @@ private:
+@@ -825,6 +827,9 @@ private:
  	 * pixels a point */
  	ImGuiStyle m_style;
  	float m_scale, m_density = 1.0f;
@@ -4643,7 +4735,7 @@ index d908c1f..4db9e13 100644
  	const MenuPalette *m_palette = &RUNASTEINN;
  	/* The frame the gamepad moves on the page */
 diff --git a/src/odin/host/ui/menu_bar.cpp b/src/odin/host/ui/menu_bar.cpp
-index 0282be6..2ef627e 100644
+index 34b2619..47d725b 100644
 --- a/src/odin/host/ui/menu_bar.cpp
 +++ b/src/odin/host/ui/menu_bar.cpp
 @@ -45,6 +45,7 @@
@@ -4735,7 +4827,7 @@ index 680fc66..23b7df4 100644
   * the control goes under them */
  constexpr float TEXT_LEAST = 120.0f;
 diff --git a/src/odin/host/ui/menu_library.cpp b/src/odin/host/ui/menu_library.cpp
-index 3f7b4e4..2031b3c 100644
+index 029c28b..1600c33 100644
 --- a/src/odin/host/ui/menu_library.cpp
 +++ b/src/odin/host/ui/menu_library.cpp
 @@ -55,6 +55,9 @@ constexpr float GAP = 12.0f;
@@ -4748,7 +4840,7 @@ index 3f7b4e4..2031b3c 100644
  constexpr float TILE_W = 4.0f;
  constexpr float TILE_H = 3.0f;
  constexpr int COLUMNS = 3;
-@@ -268,13 +271,21 @@ Menu::build_library(LibraryState &state, BarState &bar_state)
+@@ -269,13 +272,21 @@ Menu::build_library(LibraryState &state, BarState &bar_state)
  	const std::string &quit = bar_state.keys[static_cast<size_t>(Hotkeys::Action::QUIT)];
  	const std::string keys = "Enter" + (state.press.empty() ? "" : " or " + state.press) + ": play" +
  	                         (quit.empty() ? "" : "    " + quit + ": quit");
@@ -4772,7 +4864,7 @@ index 3f7b4e4..2031b3c 100644
  	filter_button(kit, state, { 0.0f, below + margin + (line - filter_h) / 2.0f }, keys_x - kit.px(20.0f));
  
  	const float under = below + margin + line + kit.px(8.0f);
-@@ -292,8 +303,10 @@ Menu::build_library(LibraryState &state, BarState &bar_state)
+@@ -293,8 +304,10 @@ Menu::build_library(LibraryState &state, BarState &bar_state)
  	};
  	const bool grouped = state.systems.size() > 1;
  	const float top = under + kit.px(14.0f), bottom = room.y - margin;
@@ -4785,7 +4877,7 @@ index 3f7b4e4..2031b3c 100644
  	const float head_h = std::round(line + kit.px(12.0f));
  	std::vector<Group> groups;
  	std::vector<std::pair<int, int>> spots;	/* row, column of each tile */
-@@ -319,7 +332,7 @@ Menu::build_library(LibraryState &state, BarState &bar_state)
+@@ -320,7 +333,7 @@ Menu::build_library(LibraryState &state, BarState &bar_state)
  
  		const float rows = static_cast<float>(std::max(1, row + 1)), across = static_cast<float>(columns);
  		const float heads = static_cast<float>(groups.size()) * head_h;
@@ -4794,7 +4886,7 @@ index 3f7b4e4..2031b3c 100644
  
  		return std::floor(std::min((grid_w - (across - 1.0f) * gap) / across, high * TILE_W / TILE_H));
  	};
-@@ -437,7 +450,7 @@ Menu::build_library(LibraryState &state, BarState &bar_state)
+@@ -438,7 +451,7 @@ Menu::build_library(LibraryState &state, BarState &bar_state)
  	/* The sheet of the game chosen: its title, its name in MAME, its
  	 * system, what is known of it; or what it lacks, where it was looked for, the folders
  	 * to choose; how to play it at its foot */
@@ -4804,7 +4896,7 @@ index 3f7b4e4..2031b3c 100644
  	const std::string play = "Enter" + (state.press.empty() ? "" : ", " + state.press) + " or click again: play";
  	const char enter[] = "Enter";
 diff --git a/src/odin/host/ui/menu_session.cpp b/src/odin/host/ui/menu_session.cpp
-index 430d3ff..78d279a 100644
+index 48ebd38..1058a90 100644
 --- a/src/odin/host/ui/menu_session.cpp
 +++ b/src/odin/host/ui/menu_session.cpp
 @@ -33,6 +33,7 @@
@@ -4815,16 +4907,16 @@ index 430d3ff..78d279a 100644
  #include "odin/host/gfx/host_graphics.hpp"
  #include "odin/machine/chips/von4_card.hpp"
  
-@@ -134,6 +135,8 @@ MenuSession::MenuSession(const Options &options, Display &display, Keyboard &key
- 	state.scale = options.display.scale;
- 	state.anisotropy = options.display.anisotropy;
+@@ -136,6 +137,8 @@ MenuSession::MenuSession(const Options &options, Display &display, Keyboard &key
  	state.upscale_mode = static_cast<unsigned>(options.display.upscale_mode);
+ 	state.gaelco3d_board_fields = options.display.board_fields;
+ 	state.gaelco3d_wide_edges = options.display.wide_edges;
 +	state.shape = std::min(options.display.shape, 2u);
 +	g_picture_shape = state.shape;
  	state.filter = options.display.filter;
  	state.window = options.display.window ? options.display.window : 1;
  	state.custom_w = options.display.window_w;
-@@ -953,6 +956,9 @@ MenuSession::do_bar(BarState &bar)
+@@ -971,6 +974,9 @@ MenuSession::do_bar(BarState &bar)
  	case Ask::OPEN:
  		m_dialog.ask_archive(m_display.window(), state.roms, ARCHIVE_ASKED);
  		return Ask::NONE;
@@ -4835,7 +4927,7 @@ index 430d3ff..78d279a 100644
  		m_display.toggle_fullscreen();
  		return Ask::NONE;
 diff --git a/src/odin/host/ui/menu_session_state.cpp b/src/odin/host/ui/menu_session_state.cpp
-index 27d5173..f2054fb 100644
+index f3f8a35..34f565b 100644
 --- a/src/odin/host/ui/menu_session_state.cpp
 +++ b/src/odin/host/ui/menu_session_state.cpp
 @@ -28,6 +28,7 @@
@@ -4846,7 +4938,7 @@ index 27d5173..f2054fb 100644
  #include "odin/host/ui/gun_drawing.hpp"
  #include "odin/host/input/seats.hpp"
  
-@@ -535,6 +536,10 @@ MenuSession::apply_display(const MenuState &was)
+@@ -551,6 +552,10 @@ MenuSession::apply_display(const MenuState &was)
  		m_display.set_anisotropy(now.anisotropy);
  		keep("anisotropy", kept_number(now.anisotropy, 1));
  	}
@@ -4881,7 +4973,7 @@ index d6b727c..f2e748b 100644
  	const std::string home = env_text("HOME"), data = env_text("XDG_DATA_HOME");
  
 diff --git a/src/odin/host/video/display.cpp b/src/odin/host/video/display.cpp
-index f185cd7..ae27ea5 100644
+index 8ccbec1..cae6daa 100644
 --- a/src/odin/host/video/display.cpp
 +++ b/src/odin/host/video/display.cpp
 @@ -26,6 +26,7 @@
@@ -4905,7 +4997,7 @@ index f185cd7..ae27ea5 100644
  	SDL_Window *const window = SDL_CreateWindow("Odin", Renderer::WIDTH, Renderer::HEIGHT, flags | SDL_WINDOW_RESIZABLE);
  
  	if (!window) {
-@@ -689,7 +696,8 @@ Display::build_bar(BarState *bar)
+@@ -721,7 +728,8 @@ Display::build_bar(BarState *bar)
  		m_menu->build_bar(*bar);
  		return true;
  	}
@@ -4915,7 +5007,7 @@ index f185cd7..ae27ea5 100644
  		return false;
  	make_menu();
  	m_menu->build_note(*bar);
-@@ -983,6 +991,7 @@ Display::show_speed()
+@@ -1016,6 +1024,7 @@ Display::show_speed()
  		                   static_cast<double>(now - m_title_since);
  
  		m_fps = static_cast<float>(fps);
@@ -4924,13 +5016,13 @@ index f185cd7..ae27ea5 100644
  			std::snprintf(title, sizeof(title), "%s (%4.1f FPS) [%s]", m_title.c_str(), fps, m_message.c_str());
  		else
 diff --git a/src/odin/host/video/display_options.hpp b/src/odin/host/video/display_options.hpp
-index 971939e..5b3933c 100644
+index f9f07f9..6a6acab 100644
 --- a/src/odin/host/video/display_options.hpp
 +++ b/src/odin/host/video/display_options.hpp
-@@ -78,6 +78,8 @@ struct DisplayOptions {
- 	/* The card Vulkan draws on by its name (HostGraphics::gpus); empty: the
- 	 * best one */
- 	std::string gpu;
+@@ -86,6 +86,8 @@ struct DisplayOptions {
+ 	 * pixel wider on every side, instead of its own outline (the
+ 	 * default) */
+ 	bool wide_edges = false;
 +	/* The shape of the picture in the window (PICTURE_SHAPES) */
 +	unsigned shape = 0;
  };
@@ -5027,7 +5119,7 @@ index 42a24db..d7fcd6d 100644
  /* As SDL sends it (SDL_x11window.c): _NET_WM_STATE, remove FULLSCREEN, to
   * the root window */
 diff --git a/src/odin/machine/boards/board.hpp b/src/odin/machine/boards/board.hpp
-index f61eb8c..139bc96 100644
+index d6e7864..a7a4843 100644
 --- a/src/odin/machine/boards/board.hpp
 +++ b/src/odin/machine/boards/board.hpp
 @@ -46,6 +46,9 @@ public:
@@ -5070,10 +5162,10 @@ index cb9126f..fcbe8ea 100644
  	/* False, with the reason on stderr, if the state could not be written
  	 * or is not one of this game and build; the board is then as after a
 diff --git a/src/odin/machine/core/host_code.cpp b/src/odin/machine/core/host_code.cpp
-index 6d950a3..e2b3466 100644
+index 81453b3..79ba1c2 100644
 --- a/src/odin/machine/core/host_code.cpp
 +++ b/src/odin/machine/core/host_code.cpp
-@@ -36,6 +36,24 @@
+@@ -37,6 +37,24 @@
  #include <libkern/OSCacheControl.h>
  #include <pthread.h>
  #endif
@@ -5098,7 +5190,7 @@ index 6d950a3..e2b3466 100644
  #endif
  
  namespace odin {
-@@ -51,18 +69,160 @@ constexpr uintptr_t REACH = 2048u << 20;
+@@ -52,18 +70,160 @@ constexpr uintptr_t REACH = 2048u << 20;
  constexpr uintptr_t REACH = 128u << 20;
  #endif
  
@@ -5263,7 +5355,7 @@ index 6d950a3..e2b3466 100644
  	const int jit = MAP_JIT;
  #else
  	const int jit = 0;
-@@ -78,38 +238,44 @@ uint8_t *take(uintptr_t at, uint32_t size)
+@@ -79,16 +239,22 @@ uint8_t *take(uintptr_t at, uint32_t size)
  		munmap(got, size);
  		return nullptr;
  	}
@@ -5288,24 +5380,30 @@ index 6d950a3..e2b3466 100644
  	munmap(code, size);
  #endif
  }
- 
- /* Memory the host may run, within reach of a direct call from the code of
-  * the program when there is some free. */
+@@ -100,10 +266,10 @@ void give_back(uint8_t *code, uint32_t size)
+  * address only, and the starts of buffers a step apart, where the code
+  * runs most, were mistaken for each other (17 % of the time of Rolling
+  * Extreme's C82 on a Golden Cove core) */
 -uint8_t *take_near(uint32_t size)
 +uint8_t *take_near(uint32_t size, uint8_t *&write)
  {
  	const uintptr_t step = REACH / 32;
 -	const uintptr_t here = reinterpret_cast<uintptr_t>(&take) & ~(step - 1);
 +	const uintptr_t here = reinterpret_cast<uintptr_t>(&give_back) & ~(step - 1);
+ #if defined(ODIN_HOST_X86_64)
+ 	static std::atomic<unsigned> taken{0};
+ 	const uintptr_t apart = (taken++ % 8) * 0x260000;
+@@ -112,16 +278,16 @@ uint8_t *take_near(uint32_t size)
+ #endif
  
  	for (uintptr_t n = 1; n < 24; n++) {
--		if (uint8_t *code = take(here + n * step, size)) {
-+		if (uint8_t *code = take(here + n * step, size, write)) {
+-		if (uint8_t *code = take(here + n * step + apart, size)) {
++		if (uint8_t *code = take(here + n * step + apart, size, write)) {
  			return code;
  		}
  		if (here > n * step) {
--			if (uint8_t *code = take(here - n * step, size)) {
-+			if (uint8_t *code = take(here - n * step, size, write)) {
+-			if (uint8_t *code = take(here - n * step + apart, size)) {
++			if (uint8_t *code = take(here - n * step + apart, size, write)) {
  				return code;
  			}
  		}
@@ -5315,7 +5413,7 @@ index 6d950a3..e2b3466 100644
  }
  
  } /* namespace */
-@@ -119,18 +285,19 @@ HostCode::HostCode(uint32_t size)
+@@ -131,18 +297,19 @@ HostCode::HostCode(uint32_t size)
  #if defined(ODIN_HOST_AARCH64)
  	  m_written(0),
  #endif
@@ -5338,7 +5436,7 @@ index 6d950a3..e2b3466 100644
  namespace {
  thread_local bool g_writing = false;
  }
-@@ -138,7 +305,7 @@ thread_local bool g_writing = false;
+@@ -150,7 +317,7 @@ thread_local bool g_writing = false;
  
  void HostCode::writable()
  {
@@ -5347,7 +5445,7 @@ index 6d950a3..e2b3466 100644
  	if (!g_writing) {
  		pthread_jit_write_protect_np(0);
  		g_writing = true;
-@@ -149,7 +316,7 @@ void HostCode::writable()
+@@ -161,7 +328,7 @@ void HostCode::writable()
  void HostCode::ready() const
  {
  #if defined(ODIN_HOST_AARCH64)
@@ -5356,7 +5454,7 @@ index 6d950a3..e2b3466 100644
  	if (g_writing) {
  		pthread_jit_write_protect_np(1);
  		g_writing = false;
-@@ -194,13 +361,13 @@ void HostCode::bytes(std::initializer_list<uint8_t> values)
+@@ -206,13 +373,13 @@ void HostCode::bytes(std::initializer_list<uint8_t> values)
  
  void HostCode::word(uint32_t value)
  {
@@ -5372,7 +5470,7 @@ index 6d950a3..e2b3466 100644
  	m_used += 8;
  }
  
-@@ -220,7 +387,7 @@ void HostCode::bind(Jump jump)
+@@ -232,7 +399,7 @@ void HostCode::bind(Jump jump)
  {
  	const uint32_t distance = m_used - (jump.from + 4);
  
@@ -5381,7 +5479,7 @@ index 6d950a3..e2b3466 100644
  }
  
  void HostCode::jump_back(uint32_t place)
-@@ -352,7 +519,7 @@ void HostCode::way_out()
+@@ -364,7 +531,7 @@ void HostCode::way_out()
  
  #if !defined(ODIN_HOST_X86_64) && !defined(ODIN_HOST_AARCH64) /* a host this file does not write code for */
  

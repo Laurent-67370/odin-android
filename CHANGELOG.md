@@ -7,6 +7,19 @@ augmente à chaque mise à jour publiée. Odin l'affiche dans **MENU → About**
 (`android-1.0.N-odin-xxxxxxx`, `xxxxxxx` étant le commit d'Odin utilisé), et
 Android dans les informations de l'application.
 
+## 1.0, suite — 23 novembre 2026
+
+- **Odin à jour** (de `6ebf2b4` à `571e6f2`) : **cinq jeux Gaelco de plus**,
+  ceux qu'Odin vient d'ajouter :
+  - **Gaelco 3D** : Football Power, Radikal Bikers, Speed Up, Surf Planet ;
+  - **Rolling Extreme** (carte C82), bornes debout et assise ;
+  - l'étalonnage gardé d'un lancement à l'autre (expérimental) pour Speed Up,
+    ATV Track et Smashing Drive.
+
+  Pas encore essayés sur téléphone. Le processeur C82 de Rolling Extreme
+  n'est recompilé que sur PC (x86-64) : sur téléphone, il est interprété, donc
+  plus lent.
+
 ## 1.0 — 22 novembre 2026
 
 - **Ajouter des jeux depuis le téléphone** : MENU → File → Add games…, le
