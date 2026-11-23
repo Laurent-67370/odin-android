@@ -15,7 +15,7 @@ https://github.com/Laurent-67370/odin-android/releases/download/odin-apk/odin.ap
 <p align="center">
   <img src="docs/air-trix-portrait.jpg" alt="Air Trix en portrait, la manette tactile sous l'image" width="230">
   &nbsp;
-  <img src="docs/games-list-portrait.jpg" alt="La liste des jeux en portrait : SEGA Hikaru, Gaelco, puis la rubrique Homebrew ; la version dans About" width="230">
+  <img src="docs/games-list-portrait.jpg" alt="La liste des jeux en portrait, version 1.0.98 : SEGA Hikaru, Gaelco PowerVR, puis la rubrique Homebrew ; le menu DEBUG ouvert" width="230">
 </p>
 
 <p align="center">
@@ -45,7 +45,7 @@ s'affiche dans MENU → About et dans le titre de la publication).
 | Records et réglages des bornes | gardés, aussi quand Android ferme l'app en arrière-plan |
 | Mises à jour | par-dessus l'ancienne version (APK signé d'une clé fixe) |
 | Ajouter des jeux | MENU → File → Add games… : le sélecteur du téléphone, plusieurs fichiers à la fois ; chaque archive copiée dans `Odin/roms` sous le bon nom (reconnue à son contenu), puis vérifiée : « ready to play », BIOS manquant, ancienne version. Essayé sur le téléphone |
-| Liste des jeux | par système (SEGA Hikaru, Gaelco, Gaelco 3D, C82), puis les jeux maison dans une rubrique HOMEBREW |
+| Liste des jeux | par système (SEGA Hikaru, Gaelco PowerVR, Gaelco 3D, Gaelco C82 : une rubrique n'apparaît que si l'un de ses jeux est dans `Odin/roms`), puis les jeux maison dans une rubrique HOMEBREW |
 | Jeux maison sans nouvel APK | leur zip porte leur description : l'import seul les ajoute à la liste (essayé sur le téléphone avec GLOWBUG GARDEN) |
 | Télécharger les jeux maison | MENU → File → Get homebrew games… : la liste des jeux maison publiés (lue sur la publication GitHub du dépôt), chacun « new », « installed » ou « update » ; ceux cochés sont téléchargés puis ajoutés comme par l'import |
 | Version | `1.0.N` dans MENU → About, dans les informations de l'app et dans le titre de la publication ; ce qui change : [CHANGELOG.md](CHANGELOG.md) |
