@@ -3851,7 +3851,7 @@ index 2d4b1b2..418c619 100644
  		return 0;
  	const VkCommandBuffer cb = m_card.commands();
 diff --git a/src/odin/host/ui/folder_dialog.cpp b/src/odin/host/ui/folder_dialog.cpp
-index b1bc982..4e77d7a 100644
+index b1bc982..515187d 100644
 --- a/src/odin/host/ui/folder_dialog.cpp
 +++ b/src/odin/host/ui/folder_dialog.cpp
 @@ -24,7 +24,18 @@
@@ -3921,7 +3921,7 @@ index b1bc982..4e77d7a 100644
  } /* namespace */
  
  FolderDialog::FolderDialog() : m_slot(std::make_shared<Slot>())
-@@ -100,6 +143,76 @@ FolderDialog::start()
+@@ -100,6 +143,82 @@ FolderDialog::start()
  	return true;
  }
  
@@ -3945,8 +3945,10 @@ index b1bc982..4e77d7a 100644
 +}
 +
 +void
-+FolderDialog::ask_homebrew(int asked)
++FolderDialog::ask_homebrew(SDL_Window *window, const std::string &roms, int asked)
 +{
++	(void)window;
++	(void)roms;
 +	if (!start())
 +		return;
 +
@@ -3986,19 +3988,23 @@ index b1bc982..4e77d7a 100644
 +		SDL_ShowOpenFileDialog(answered_all, new Asked{ m_slot, asked }, window, nullptr, 0, nullptr, true);
 +}
 +#else
++#if !defined(ODIN_IOS)
 +void
-+FolderDialog::ask_homebrew(int asked)
++FolderDialog::ask_homebrew(SDL_Window *window, const std::string &roms, int asked)
 +{
++	(void)window;
++	(void)roms;
 +	if (!start())
 +		return;
-+	SDL_SetError("the homebrew games are listed on Android only");
++	SDL_SetError("the homebrew games are listed on phones only");
 +	answered(new Asked{ m_slot, asked }, nullptr, 0);
 +}
++#endif
 +
  void
  FolderDialog::ask(SDL_Window *window, const std::string &from, int asked)
  {
-@@ -107,12 +220,25 @@ FolderDialog::ask(SDL_Window *window, const std::string &from, int asked)
+@@ -107,12 +226,34 @@ FolderDialog::ask(SDL_Window *window, const std::string &from, int asked)
  		SDL_ShowOpenFolderDialog(answered, new Asked{ m_slot, asked }, window, start_at(from), false);
  }
  
@@ -4012,6 +4018,15 @@ index b1bc982..4e77d7a 100644
 +	if (start())
 +		pick_archives(window, answered_all, new Asked{ m_slot, asked });
 +}
++
++/* iOS: the list of the homebrew games fetched and shown, those chosen
++ * downloaded, then added as archives are (folder_dialog_ios.mm) */
++void
++FolderDialog::ask_homebrew(SDL_Window *window, const std::string &roms, int asked)
++{
++	if (start())
++		pick_homebrew(window, roms, answered_all, new Asked{ m_slot, asked });
++}
 +#else
  void
  FolderDialog::ask_archive(SDL_Window *window, const std::string &from, int asked)
@@ -4024,7 +4039,7 @@ index b1bc982..4e77d7a 100644
  
  bool
  FolderDialog::open() const
-@@ -137,3 +263,41 @@ FolderDialog::answer()
+@@ -137,3 +278,41 @@ FolderDialog::answer()
  }
  
  } /* namespace odin */
@@ -4067,27 +4082,28 @@ index b1bc982..4e77d7a 100644
 +}
 +#endif
 diff --git a/src/odin/host/ui/folder_dialog.hpp b/src/odin/host/ui/folder_dialog.hpp
-index 01c47b0..ecac89a 100644
+index 01c47b0..4023f4f 100644
 --- a/src/odin/host/ui/folder_dialog.hpp
 +++ b/src/odin/host/ui/folder_dialog.hpp
-@@ -53,6 +53,11 @@ public:
+@@ -53,6 +53,12 @@ public:
  	void ask(SDL_Window *window, const std::string &from, int asked);
  	/* A zip or a 7z, as MAME keeps a game, the same way */
  	void ask_archive(SDL_Window *window, const std::string &from, int asked);
-+	/* Android: the homebrew games published with the APK, chosen and
-+	 * downloaded by the activity (OdinActivity.askHomebrew); the answer is
-+	 * their files (file:// addresses, one a line), as for archives.
-+	 * Elsewhere, an answer that there is no such list. */
-+	void ask_homebrew(int asked);
++	/* A phone: the homebrew games published with the APK, chosen and
++	 * downloaded (Android: OdinActivity.askHomebrew; iOS: over `window`,
++	 * those in `roms` told installed); the answer is their files (file://
++	 * addresses, one a line), as for archives. Elsewhere, an answer that
++	 * there is no such list. */
++	void ask_homebrew(SDL_Window *window, const std::string &roms, int asked);
  	bool open() const;
  	/* The event that says the answer has come, and the answer, once */
  	Uint32 event() const;
 diff --git a/src/odin/host/ui/folder_dialog_ios.hpp b/src/odin/host/ui/folder_dialog_ios.hpp
 new file mode 100644
-index 0000000..2fb9e0a
+index 0000000..0c429f1
 --- /dev/null
 +++ b/src/odin/host/ui/folder_dialog_ios.hpp
-@@ -0,0 +1,43 @@
+@@ -0,0 +1,52 @@
 +/*
 + *  ██████╗ ██████╗ ██╗███╗   ██╗
 + * ██╔═══██╗██╔══██╗██║████╗  ██║
@@ -4117,6 +4133,8 @@ index 0000000..2fb9e0a
 +
 +#include <SDL3/SDL_video.h>
 +
++#include <string>
++
 +namespace odin {
 +
 +/* As SDL_DialogFileCallback: the files chosen (file:// addresses, ended by
@@ -4128,15 +4146,22 @@ index 0000000..2fb9e0a
 + * on the main thread */
 +void pick_archives(SDL_Window *window, PickedArchives done, void *userdata);
 +
++/* iOS: the homebrew games published with the APK (homebrew.json of its
++ * release) listed over `window`, new or installed (an archive of the name
++ * in `roms`); those chosen downloaded to the temporary folder, `done`
++ * called with their file:// addresses (none: nothing chosen; null: an
++ * error, SDL_GetError() says which) */
++void pick_homebrew(SDL_Window *window, const std::string &roms, PickedArchives done, void *userdata);
++
 +} /* namespace odin */
 +
 +#endif /* ODIN_FOLDER_DIALOG_IOS_HPP */
 diff --git a/src/odin/host/ui/folder_dialog_ios.mm b/src/odin/host/ui/folder_dialog_ios.mm
 new file mode 100644
-index 0000000..4f055de
+index 0000000..afe9a19
 --- /dev/null
 +++ b/src/odin/host/ui/folder_dialog_ios.mm
-@@ -0,0 +1,111 @@
+@@ -0,0 +1,294 @@
 +/*
 + *  ██████╗ ██████╗ ██╗███╗   ██╗
 + * ██╔═══██╗██╔══██╗██║████╗  ██║
@@ -4174,7 +4199,12 @@ index 0000000..4f055de
 +#include <SDL3/SDL_properties.h>
 +#include <SDL3/SDL_video.h>
 +
++#include <SDL3/SDL_error.h>
++
++#include <filesystem>
++#include <memory>
 +#include <string>
++#include <system_error>
 +#include <vector>
 +
 +@interface OdinPicker : NSObject <UIDocumentPickerDelegate>
@@ -4217,10 +4247,11 @@ index 0000000..4f055de
 +}
 +@end
 +
-+namespace odin {
++namespace {
 +
-+void
-+pick_archives(SDL_Window *window, PickedArchives done, void *userdata)
++/* The view a dialog is shown from: the window's, or what it shows */
++UIViewController *
++top_of(SDL_Window *window)
 +{
 +	UIWindow *const shown = (__bridge UIWindow *)SDL_GetPointerProperty(
 +		SDL_GetWindowProperties(window), SDL_PROP_WINDOW_UIKIT_WINDOW_POINTER, nullptr);
@@ -4228,6 +4259,183 @@ index 0000000..4f055de
 +
 +	while (top.presentedViewController)
 +		top = top.presentedViewController;
++	return top;
++}
++
++/* The answer of the homebrew games, on the main thread: the files
++ * downloaded, or the error when none was */
++void
++homebrew_done(odin::PickedArchives done, void *userdata, const std::vector<std::string> &files,
++              const std::string &error)
++{
++	std::vector<const char *> list;
++
++	for (const std::string &file : files)
++		list.push_back(file.c_str());
++	list.push_back(nullptr);
++	if (files.empty() && !error.empty()) {
++		SDL_SetError("%s", error.c_str());
++		done(userdata, nullptr, 0);
++	} else {
++		done(userdata, list.data(), 0);
++	}
++}
++
++/* The games chosen downloaded one after the other to the temporary folder,
++ * each as <name>.zip (GitHub's downloads go on elsewhere: the session
++ * follows) */
++void
++download(NSArray<NSDictionary *> *games, odin::PickedArchives done, void *userdata)
++{
++	if (games.count == 0) {
++		homebrew_done(done, userdata, {}, "");
++		return;
++	}
++	NSString *const folder = [NSTemporaryDirectory() stringByAppendingPathComponent:@"homebrew"];
++	auto files = std::make_shared<std::vector<std::string>>();
++	auto error = std::make_shared<std::string>();
++	auto left = std::make_shared<NSUInteger>(games.count);
++
++	[[NSFileManager defaultManager] createDirectoryAtPath:folder withIntermediateDirectories:YES attributes:nil error:nil];
++	for (NSDictionary *game in games) {
++		NSString *const name = [NSString stringWithFormat:@"%@", game[@"name"]];
++		NSString *const title = [NSString stringWithFormat:@"%@", game[@"title"]];
++		NSURL *const url = [NSURL URLWithString:[NSString stringWithFormat:@"%@", game[@"url"]]];
++		NSString *const path = [folder stringByAppendingPathComponent:[name stringByAppendingString:@".zip"]];
++
++		if (!url) {
++			*error = std::string("No address for ") + title.UTF8String;
++			if (--*left == 0)
++				homebrew_done(done, userdata, *files, *error);
++			continue;
++		}
++		NSURLSessionDownloadTask *const task = [[NSURLSession sharedSession]
++			downloadTaskWithURL:url
++			  completionHandler:^(NSURL *location, NSURLResponse *response, NSError *failed) {
++				  /* The file is gone once this returns: moved first */
++				  const NSInteger status = [response isKindOfClass:[NSHTTPURLResponse class]]
++				                                   ? ((NSHTTPURLResponse *)response).statusCode
++				                                   : 0;
++				  std::string why;
++
++				  if (location && !failed && status == 200) {
++					  [[NSFileManager defaultManager] removeItemAtPath:path error:nil];
++					  NSError *moved = nil;
++					  if ([[NSFileManager defaultManager] moveItemAtURL:location
++					                                              toURL:[NSURL fileURLWithPath:path]
++					                                              error:&moved])
++						  why.clear();
++					  else
++						  why = moved.localizedDescription.UTF8String;
++				  } else {
++					  why = failed ? failed.localizedDescription.UTF8String : "HTTP " + std::to_string(status);
++				  }
++				  const std::string got = why.empty() ? std::string([NSURL fileURLWithPath:path].absoluteString.UTF8String)
++				                                      : std::string();
++				  const std::string said = why.empty() ? std::string()
++				                                       : std::string("Cannot download ") + title.UTF8String + ": " + why;
++				  dispatch_async(dispatch_get_main_queue(), ^{
++					  if (!got.empty())
++						  files->push_back(got);
++					  if (!said.empty())
++						  *error = said;
++					  if (--*left == 0)
++						  homebrew_done(done, userdata, *files, *error);
++				  });
++			  }];
++		[task resume];
++	}
++}
++
++/* The list shown: every game new or installed, one button each, and one
++ * for all the new ones */
++void
++choose(SDL_Window *window, const std::string &roms, NSArray<NSDictionary *> *games, odin::PickedArchives done,
++       void *userdata)
++{
++	UIViewController *const top = top_of(window);
++
++	if (!top) {
++		homebrew_done(done, userdata, {}, "no view to show the homebrew games from");
++		return;
++	}
++	NSMutableArray<NSDictionary *> *const fresh = [NSMutableArray array];
++	UIAlertController *const alert =
++		[UIAlertController alertControllerWithTitle:@"Homebrew games"
++		                                    message:@"Free games made for Odin, downloaded from GitHub. They need the BIOS (hikaru.zip)."
++		                             preferredStyle:UIAlertControllerStyleAlert];
++
++	for (NSDictionary *game in games) {
++		NSString *const name = [NSString stringWithFormat:@"%@", game[@"name"]];
++		std::error_code there;
++		const bool installed = std::filesystem::exists(roms + "/" + name.UTF8String + ".zip", there);
++		NSString *const label = [NSString stringWithFormat:@"%@ - %@ (%@)", game[@"title"], game[@"genre"],
++		                                                   installed ? @"installed" : @"new"];
++
++		if (!installed)
++			[fresh addObject:game];
++		[alert addAction:[UIAlertAction actionWithTitle:label
++		                                          style:UIAlertActionStyleDefault
++		                                        handler:^(UIAlertAction *action) {
++			                                        (void)action;
++			                                        download(@[ game ], done, userdata);
++		                                        }]];
++	}
++	if (fresh.count > 1) {
++		NSArray<NSDictionary *> *const all = [fresh copy];
++		[alert addAction:[UIAlertAction actionWithTitle:[NSString stringWithFormat:@"All the new ones (%lu)",
++		                                                                           (unsigned long)all.count]
++		                                          style:UIAlertActionStyleDefault
++		                                        handler:^(UIAlertAction *action) {
++			                                        (void)action;
++			                                        download(all, done, userdata);
++		                                        }]];
++	}
++	[alert addAction:[UIAlertAction actionWithTitle:@"Cancel"
++	                                          style:UIAlertActionStyleCancel
++	                                        handler:^(UIAlertAction *action) {
++			                                        (void)action;
++		                                        homebrew_done(done, userdata, {}, "");
++	                                        }]];
++	[top presentViewController:alert animated:YES completion:nil];
++}
++
++} /* namespace */
++
++namespace odin {
++
++void
++pick_homebrew(SDL_Window *window, const std::string &roms, PickedArchives done, void *userdata)
++{
++	NSURL *const list =
++		[NSURL URLWithString:@"https://github.com/Laurent-67370/odin-android/releases/download/odin-apk/homebrew.json"];
++	const std::string folder = roms;
++
++	[[[NSURLSession sharedSession]
++		dataTaskWithURL:list
++	      completionHandler:^(NSData *data, NSURLResponse *response, NSError *failed) {
++		      (void)response;
++		      id parsed = data ? [NSJSONSerialization JSONObjectWithData:data options:0 error:nil] : nil;
++		      NSArray *games = [parsed isKindOfClass:[NSDictionary class]] ? parsed[@"games"] : nil;
++		      const std::string why =
++			      failed ? std::string("No list of homebrew games (no network?): ") +
++			                       failed.localizedDescription.UTF8String
++			             : std::string("No list of homebrew games");
++
++		      dispatch_async(dispatch_get_main_queue(), ^{
++			      if ([games isKindOfClass:[NSArray class]] && games.count)
++				      choose(window, folder, games, done, userdata);
++			      else
++				      homebrew_done(done, userdata, {}, why);
++		      });
++	      }] resume];
++}
++
++void
++pick_archives(SDL_Window *window, PickedArchives done, void *userdata)
++{
++	UIViewController *const top = top_of(window);
++
 +	if (!top) {
 +		SDL_SetError("no view to show the picker of documents from");
 +		done(userdata, nullptr, 0);
@@ -4408,7 +4616,7 @@ index d908c1f..4db9e13 100644
  	const MenuPalette *m_palette = &RUNASTEINN;
  	/* The frame the gamepad moves on the page */
 diff --git a/src/odin/host/ui/menu_bar.cpp b/src/odin/host/ui/menu_bar.cpp
-index 0282be6..af787b3 100644
+index 0282be6..2ef627e 100644
 --- a/src/odin/host/ui/menu_bar.cpp
 +++ b/src/odin/host/ui/menu_bar.cpp
 @@ -45,6 +45,7 @@
@@ -4454,7 +4662,7 @@ index 0282be6..af787b3 100644
  	ImGui::Render();
  }
  
-@@ -333,8 +343,19 @@ Menu::bar_file(BarItems &b)
+@@ -333,8 +343,17 @@ Menu::bar_file(BarItems &b)
  {
  	BarState &state = b.state;
  
@@ -4462,11 +4670,9 @@ index 0282be6..af787b3 100644
 +	/* The picker of the phone: the archives copied to the folder roms */
 +	if (item("Add games..."))
 +		b.ask(Ask::OPEN);
-+#if defined(__ANDROID__)
 +	/* The homebrew games published with the APK, downloaded and added */
 +	if (item("Get homebrew games..."))
 +		b.ask(Ask::HOMEBREW);
-+#endif
 +#else
  	if (item("Open game..."))
  		b.ask(Ask::OPEN);
@@ -4571,7 +4777,7 @@ index 3f7b4e4..2031b3c 100644
  	const std::string play = "Enter" + (state.press.empty() ? "" : ", " + state.press) + " or click again: play";
  	const char enter[] = "Enter";
 diff --git a/src/odin/host/ui/menu_session.cpp b/src/odin/host/ui/menu_session.cpp
-index 430d3ff..26a3b94 100644
+index 430d3ff..78d279a 100644
 --- a/src/odin/host/ui/menu_session.cpp
 +++ b/src/odin/host/ui/menu_session.cpp
 @@ -33,6 +33,7 @@
@@ -4596,7 +4802,7 @@ index 430d3ff..26a3b94 100644
  		m_dialog.ask_archive(m_display.window(), state.roms, ARCHIVE_ASKED);
  		return Ask::NONE;
 +	case Ask::HOMEBREW:
-+		m_dialog.ask_homebrew(ARCHIVE_ASKED);
++		m_dialog.ask_homebrew(m_display.window(), state.roms, ARCHIVE_ASKED);
 +		return Ask::NONE;
  	case Ask::FULLSCREEN:
  		m_display.toggle_fullscreen();
