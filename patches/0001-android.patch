@@ -5162,7 +5162,7 @@ index cb9126f..fcbe8ea 100644
  	/* False, with the reason on stderr, if the state could not be written
  	 * or is not one of this game and build; the board is then as after a
 diff --git a/src/odin/machine/core/host_code.cpp b/src/odin/machine/core/host_code.cpp
-index 81453b3..79ba1c2 100644
+index 81453b3..8fc1034 100644
 --- a/src/odin/machine/core/host_code.cpp
 +++ b/src/odin/machine/core/host_code.cpp
 @@ -37,6 +37,24 @@
@@ -5190,7 +5190,7 @@ index 81453b3..79ba1c2 100644
  #endif
  
  namespace odin {
-@@ -52,18 +70,160 @@ constexpr uintptr_t REACH = 2048u << 20;
+@@ -52,18 +70,171 @@ constexpr uintptr_t REACH = 2048u << 20;
  constexpr uintptr_t REACH = 128u << 20;
  #endif
  
@@ -5271,20 +5271,31 @@ index 81453b3..79ba1c2 100644
 +		return nullptr;
 +	}
 +
-+	/* A brk not answered may leave its own encoding in x0: a page of 16 KB
-+	 * the process holds, or nothing */
++	/* The memory given: a page of 16 KB the process holds, `size` long. The
++	 * debugger may prepare it in pieces, several regions of the process's map
++	 * one after the other: each found in turn, with no gap */
 +	const uintptr_t at = reinterpret_cast<uintptr_t>(got);
-+	vm_address_t region = at;
-+	vm_size_t length = 0;
-+	vm_region_basic_info_data_64_t info;
-+	mach_msg_type_number_t count = VM_REGION_BASIC_INFO_COUNT_64;
-+	mach_port_t object = MACH_PORT_NULL;
++	const uintptr_t end = at + size;
++	uintptr_t next = at;
 +
-+	if (!at || (at & 0x3FFF) ||
-+	    vm_region_64(mach_task_self(), &region, &length, VM_REGION_BASIC_INFO_64,
-+	                 reinterpret_cast<vm_region_info_t>(&info), &count, &object) != KERN_SUCCESS ||
-+	    region > at || region + length < at + size) {
-+		std::fprintf(stderr, "JIT: the debugger's answer is no code memory (%p)\n", got);
++	while (at && !(at & 0x3FFF) && next < end) {
++		vm_address_t region = next;
++		vm_size_t length = 0;
++		vm_region_basic_info_data_64_t info;
++		mach_msg_type_number_t count = VM_REGION_BASIC_INFO_COUNT_64;
++		mach_port_t object = MACH_PORT_NULL;
++
++		if (vm_region_64(mach_task_self(), &region, &length, VM_REGION_BASIC_INFO_64,
++		                 reinterpret_cast<vm_region_info_t>(&info), &count, &object) != KERN_SUCCESS ||
++		    region > next) {
++			break;
++		}
++		next = region + length;
++	}
++	if (!at || (at & 0x3FFF) || next < end) {
++		std::fprintf(stderr,
++		             "JIT: the debugger's answer is no code memory (%p for %u KB: mapped up to %p)\n",
++		             got, size >> 10, reinterpret_cast<void *>(next));
 +		return nullptr;
 +	}
 +	return static_cast<uint8_t *>(got);
@@ -5355,7 +5366,7 @@ index 81453b3..79ba1c2 100644
  	const int jit = MAP_JIT;
  #else
  	const int jit = 0;
-@@ -79,16 +239,22 @@ uint8_t *take(uintptr_t at, uint32_t size)
+@@ -79,16 +250,22 @@ uint8_t *take(uintptr_t at, uint32_t size)
  		munmap(got, size);
  		return nullptr;
  	}
@@ -5380,7 +5391,7 @@ index 81453b3..79ba1c2 100644
  	munmap(code, size);
  #endif
  }
-@@ -100,10 +266,10 @@ void give_back(uint8_t *code, uint32_t size)
+@@ -100,10 +277,10 @@ void give_back(uint8_t *code, uint32_t size)
   * address only, and the starts of buffers a step apart, where the code
   * runs most, were mistaken for each other (17 % of the time of Rolling
   * Extreme's C82 on a Golden Cove core) */
@@ -5393,7 +5404,7 @@ index 81453b3..79ba1c2 100644
  #if defined(ODIN_HOST_X86_64)
  	static std::atomic<unsigned> taken{0};
  	const uintptr_t apart = (taken++ % 8) * 0x260000;
-@@ -112,16 +278,16 @@ uint8_t *take_near(uint32_t size)
+@@ -112,16 +289,16 @@ uint8_t *take_near(uint32_t size)
  #endif
  
  	for (uintptr_t n = 1; n < 24; n++) {
@@ -5413,7 +5424,7 @@ index 81453b3..79ba1c2 100644
  }
  
  } /* namespace */
-@@ -131,18 +297,19 @@ HostCode::HostCode(uint32_t size)
+@@ -131,18 +308,19 @@ HostCode::HostCode(uint32_t size)
  #if defined(ODIN_HOST_AARCH64)
  	  m_written(0),
  #endif
@@ -5436,7 +5447,7 @@ index 81453b3..79ba1c2 100644
  namespace {
  thread_local bool g_writing = false;
  }
-@@ -150,7 +317,7 @@ thread_local bool g_writing = false;
+@@ -150,7 +328,7 @@ thread_local bool g_writing = false;
  
  void HostCode::writable()
  {
@@ -5445,7 +5456,7 @@ index 81453b3..79ba1c2 100644
  	if (!g_writing) {
  		pthread_jit_write_protect_np(0);
  		g_writing = true;
-@@ -161,7 +328,7 @@ void HostCode::writable()
+@@ -161,7 +339,7 @@ void HostCode::writable()
  void HostCode::ready() const
  {
  #if defined(ODIN_HOST_AARCH64)
@@ -5454,7 +5465,7 @@ index 81453b3..79ba1c2 100644
  	if (g_writing) {
  		pthread_jit_write_protect_np(1);
  		g_writing = false;
-@@ -206,13 +373,13 @@ void HostCode::bytes(std::initializer_list<uint8_t> values)
+@@ -206,13 +384,13 @@ void HostCode::bytes(std::initializer_list<uint8_t> values)
  
  void HostCode::word(uint32_t value)
  {
@@ -5470,7 +5481,7 @@ index 81453b3..79ba1c2 100644
  	m_used += 8;
  }
  
-@@ -232,7 +399,7 @@ void HostCode::bind(Jump jump)
+@@ -232,7 +410,7 @@ void HostCode::bind(Jump jump)
  {
  	const uint32_t distance = m_used - (jump.from + 4);
  
@@ -5479,7 +5490,7 @@ index 81453b3..79ba1c2 100644
  }
  
  void HostCode::jump_back(uint32_t place)
-@@ -364,7 +531,7 @@ void HostCode::way_out()
+@@ -364,7 +542,7 @@ void HostCode::way_out()
  
  #if !defined(ODIN_HOST_X86_64) && !defined(ODIN_HOST_AARCH64) /* a host this file does not write code for */
  
