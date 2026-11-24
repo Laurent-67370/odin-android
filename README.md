@@ -82,7 +82,8 @@ lentement : le M5 le supporte, un appareil moins puissant moins. Le JIT (le
 SH-4 et l'ARM7 recompilés en ARM64) demande un débogueur (StikDebug) ; sous
 iOS 26 et plus récent, la mémoire qu'une app se donne ne peut plus exécuter de
 code, Odin la demande donc à StikDebug (script `universal.js`), comme les
-émulateurs iOS : à essayer. Les bêta-testeurs se retrouvent sur
+émulateurs iOS : **essayé, ça marche** (iPad Pro M5, iOS 27). Les jeux maison
+téléchargés par « Get homebrew games... » y tournent aussi. Les bêta-testeurs se retrouvent sur
 [Tovarichtch/Odin#56](https://github.com/Tovarichtch/Odin/issues/56).
 
 ## Installer
