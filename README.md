@@ -36,7 +36,7 @@ s'affiche dans MENU → About et dans le titre de la publication).
 | Brave Firefighters | jouable, visée au doigt : le jet part sous le doigt |
 | Gaelco Football | second stick tactile pour le tir, à essayer |
 | Virtual-On Force | deux leviers sur les deux sticks tactiles, à essayer |
-| Gaelco 3D (Football Power, Radikal Bikers, Speed Up, Surf Planet), Rolling Extreme | ajoutés avec la mise à jour d'Odin (`571e6f2`), **pas encore essayés** sur téléphone ; le C82 de Rolling Extreme y est interprété (pas de JIT hors x86-64) |
+| Gaelco 3D (Football Power, Radikal Bikers, Speed Up, Surf Planet), Rolling Extreme | ajoutés avec la mise à jour d'Odin (`571e6f2`) ; **Radikal Bikers : 60 images/s** sur iPad Pro M5 (iOS, sans JIT : ces processeurs n'en ont pas) ; les autres pas encore essayés ; Rolling Extreme demande le `roe.ic17` redumpé en novembre 2026 (CRC `30f51686`, l'ancien `a52bf5a1` n'est pas reconnu), son C82 interprété (pas de JIT hors x86-64) |
 | Manette tactile | stick flottant, boutons, gâchettes, vibration, panneau de raccourcis ; en paysage, rangée dans deux colonnes latérales ; stick plus sensible dans les jeux à directions, chaque tape comptée même très brève |
 | Format de l'image | 4:3 (borne), 16:9 ou plein écran |
 | Menus | agrandis ×3 en paysage, ×2,5 en portrait (la fiche du jeu sous les vignettes), police Roboto nette ; lignes des menus, boutons et réglages espacés pour le doigt |
