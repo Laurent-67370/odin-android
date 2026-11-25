@@ -82,10 +82,10 @@ lentement : le M5 le supporte, un appareil moins puissant moins. Le JIT (le
 SH-4 et l'ARM7 recompilés en ARM64) demande un débogueur (StikDebug) ; sous
 iOS 26 et plus récent, la mémoire qu'une app se donne ne peut plus exécuter de
 code, Odin la demande donc à StikDebug (script `universal.js`), comme les
-émulateurs iOS. StikDebug donne bien cette mémoire, mais jusqu'à la 0.1.17
-Odin la refusait (il la voulait d'un seul bloc, StikDebug la prépare en
-plusieurs) : les essais réussis tournaient en fait **sans JIT**. La 0.1.18
-l'accepte, **à essayer**. Les jeux maison
+émulateurs iOS : **essayé, ça marche** depuis la 0.1.18 (iPad Pro M5,
+iOS 27, Star Wars Racer Arcade à 60 images/s avec le JIT). Jusqu'à la 0.1.17,
+Odin refusait cette mémoire (il la voulait d'un seul bloc, StikDebug la
+prépare en plusieurs) : les essais précédents tournaient en fait sans JIT. Les jeux maison
 téléchargés par « Get homebrew games... » y tournent aussi. Les bêta-testeurs se retrouvent sur
 [Tovarichtch/Odin#56](https://github.com/Tovarichtch/Odin/issues/56).
 
